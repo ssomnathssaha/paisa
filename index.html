@@ -264,6 +264,7 @@ main{padding:4px 16px calc(112px + env(safe-area-inset-bottom))}
 .tx-sub{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:5px;align-items:center;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
 .tx-amt{font-weight:700;font-size:15px;text-align:right;white-space:nowrap}
 .tx-amt.income{color:var(--income)}
+.tx-amt.transfer{color:#0284c7}
 .tx-amt small{display:block;font-size:10.5px;color:var(--faint);font-weight:500;margin-top:2px}
 .empty{text-align:center;padding:36px 16px;color:var(--muted)}
 .empty .e{font-size:42px;margin-bottom:10px}
@@ -563,6 +564,9 @@ let D = null;
 const PENDING_KEY = 'paisa_pending_v1', SALT_KEY = 'paisa_salt';
 const Sync = { timer: null, ptimer: null, retryAt: 0, inflight: false, dirty: false, n: 0, since: 0, state: 'saved', err: '', lastOk: 0, session: 0, pendingAtLock: -1 };
 const clone = o => JSON.parse(JSON.stringify(o));
+const SERVER_VER_NEEDED = 2;
+// Card tracking needs Code.gs v2 (new columns). On an older script, block it so nothing is silently lost.
+const serverOutdated = () => CONFIG.MODE === 'sheets' && (Store.serverVer || 1) < SERVER_VER_NEEDED;
 const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
@@ -603,9 +607,10 @@ function mergeData(base, local, server) {
     return [...R.values()];
   };
   ['txns', 'accounts', 'emis', 'recurring'].forEach(k => { out[k] = mergeList(base[k], local[k], server[k], 'id'); });
-  const flat = d => (d.snapshots || []).flatMap(s => Object.entries(s.values || {}).map(([a, v]) => ({ k: s.month + '|' + a, v })));
-  const sm = {}; mergeList(flat(base), flat(local), flat(server), 'k').forEach(({ k, v }) => { const [m, a] = k.split('|'); (sm[m] = sm[m] || {})[a] = v; });
-  out.snapshots = Object.keys(sm).sort().map(m => ({ month: m, values: sm[m] }));
+  const flat = d => (d.snapshots || []).flatMap(s => Object.entries(s.values || {}).map(([a, v]) => ({ k: s.month + '|' + a, v, u: (s.updated || {})[a] || 0 })));
+  const sm = {}, su = {};
+  mergeList(flat(base), flat(local), flat(server), 'k').forEach(({ k, v, u }) => { const [m, a] = k.split('|'); (sm[m] = sm[m] || {})[a] = v; if (u) (su[m] = su[m] || {})[a] = u; });
+  out.snapshots = Object.keys(sm).sort().map(m => ({ month: m, values: sm[m], updated: su[m] || {} }));
   out.categories = out.categories || {};
   ['expense', 'income'].forEach(t => { out.categories[t] = mergeList((base.categories || {})[t], (local.categories || {})[t], out.categories[t], 'name'); });
   out.settings = Object.assign({}, server.settings);
@@ -614,7 +619,7 @@ function mergeData(base, local, server) {
 }
 
 const Store = {
-  pw: null, rev: null, base: null, sheetUrl: '', notice: '',
+  pw: null, rev: null, base: null, sheetUrl: '', notice: '', serverVer: 2,
   async unlock(pw) {
     if (CONFIG.MODE !== 'sheets') {
       await sleep(700); // simulate network latency
@@ -638,7 +643,8 @@ const Store = {
       this.notice = `📴 Offline — opened ${Sync.n} unsynced change${Sync.n === 1 ? '' : 's'} saved on this device. They will sync when you're back online.`;
       this.retryLater('offline'); return;
     }
-    this.sheetUrl = res.sheetUrl || '';
+    this.sheetUrl = res.sheetUrl || ''; this.serverVer = res.ver || 1;
+    if (serverOutdated()) this.notice = (this.notice ? this.notice + ' ' : '') + '⚠️ Your Apps Script is outdated — update Code.gs (see SETUP.md) to enable credit-card tracking.';
     const server = migrate(res.data || {});
     if (pend) {
       D = migrate(mergeData(migrate(pend.base || {}), migrate(pend.data), server).data);
@@ -693,7 +699,7 @@ const Store = {
       const res = await api('load');
       if (session !== Sync.session || !D) return;
       const server = migrate(res.data || {}), m = mergeData(migrate(clone(this.base || {})), D, server);
-      D = migrate(m.data); this.base = server; this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl;
+      D = migrate(m.data); this.base = server; this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1;
       Sync.dirty = true; if (!Sync.n) Sync.n = 1; this.persistNow(); render();
       toast('🔀 Merged your changes with newer data from the Sheet');
       Sync.timer = setTimeout(() => this.flush(), 0);
@@ -709,7 +715,7 @@ const Store = {
     const session = Sync.session; setSync('saving');
     try {
       const res = await api('load'); if (session !== Sync.session) return;
-      D = migrate(res.data || {}); this.base = clone(D); this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl;
+      D = migrate(res.data || {}); this.base = clone(D); this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1;
       clearTimeout(Sync.timer); Sync.n = 0; Sync.dirty = false; Sync.since = 0; Sync.lastOk = Date.now(); Vault.clear();
       setSync('saved'); closeSheet(); render(); toast('Reloaded from Google Sheet ✓');
     } catch (e) { setSync(Sync.n ? 'error' : 'saved'); toast('⚠️ ' + e.message); }
@@ -765,6 +771,19 @@ function migrate(d) {
   d.version = 1; d.txns = d.txns || []; d.categories = d.categories || defaultCategories();
   d.accounts = d.accounts || []; d.snapshots = d.snapshots || []; d.emis = d.emis || []; d.recurring = d.recurring || [];
   d.settings = Object.assign({ budget: 90000, efTarget: 6 }, d.settings || {});
+  // Credit cards become live: opening dues = latest manually entered value, tracked from today.
+  d.accounts.forEach(a => {
+    if (a.kind !== 'liability' || a.group !== 'Credit Card' || a.openingDate) return;
+    let v = 0; d.snapshots.slice().sort((x, y) => x.month.localeCompare(y.month)).forEach(s => { if (s.values && s.values[a.id] !== undefined) v = +s.values[a.id] || 0; });
+    a.opening = v; a.openingDate = today(); a.openingTs = Date.now();
+  });
+  // Values without an "updated" time are treated as entered now (or at month end for past months), so card
+  // bill payments made from now on are subtracted from the paying account until its value is updated again.
+  const now = Date.now();
+  d.snapshots.forEach(s => {
+    s.updated = s.updated || {};
+    Object.keys(s.values || {}).forEach(k => { if (!s.updated[k]) s.updated[k] = Math.min(monthEndTs(s.month), now); });
+  });
   return d;
 }
 const cat = (type, name) => (D.categories[type] || []).find(c => c.name === name) || { name, icon: type === 'income' ? '💰' : '📦', color: '#94a3b8' };
@@ -778,21 +797,67 @@ const byDateDesc = (a, b) => b.date.localeCompare(a.date) || (b.ts || 0) - (a.ts
 function allTags() { const c = {}; D.txns.forEach(t => (t.tags || []).forEach(g => c[g] = (c[g] || 0) + 1)); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); }
 
 // Net worth: monthly snapshots; values carry forward to later months until updated.
+// Exceptions (live): credit cards are computed from card spends/refunds/bill payments, and any account that paid
+// a card bill is reduced by payments made after its value was last updated.
 const sortedSnaps = () => D.snapshots.slice().sort((a, b) => a.month.localeCompare(b.month));
 function valuesAt(month) {
   const snaps = sortedSnaps().filter(s => s.month <= month); if (!snaps.length) return null;
   const out = {}; snaps.forEach(s => Object.assign(out, s.values)); return out;
 }
+const isCard = a => !!a && a.kind === 'liability' && a.group === 'Credit Card';
+const cards = () => D.accounts.filter(isCard);
+const payFromAccounts = () => D.accounts.filter(a => a.kind === 'asset' && ['Bank', 'Cash'].includes(a.group));
+const accById = id => D.accounts.find(a => a.id === id);
+const monthEnd = m => `${m}-${pad(daysInMonth(m))}`;
+const monthEndTs = m => parseD(monthEnd(m)).getTime() + 864e5 - 1;
+const asOfFor = m => { const e = monthEnd(m), t = today(); return e < t ? e : t; };
+let lastCardId = '';
+const defaultCardId = () => (cards().find(c => c.id === lastCardId) || cards()[0] || {}).id || '';
+// Outstanding on a card as of a date; null before live tracking started (manual history applies then).
+function cardDue(acc, asOf = today()) {
+  if (serverOutdated() || (acc.openingDate && asOf < acc.openingDate)) return null;
+  const after = t => !acc.openingDate || t.date > acc.openingDate || (t.date === acc.openingDate && (t.ts || 0) > (acc.openingTs || 0));
+  let due = +acc.opening || 0;
+  for (const t of D.txns) {
+    if (t.date > asOf || !after(t)) continue;
+    if (t.cardId === acc.id && t.type === 'expense') due += t.amount;
+    else if (t.cardId === acc.id && t.type === 'income') due -= t.amount;
+    else if (t.type === 'transfer' && t.toId === acc.id) due -= t.amount;
+  }
+  return Math.round(due * 100) / 100;
+}
+function lastSnap(accId, month) {
+  let r = null; for (const s of sortedSnaps()) { if (s.month > month) break; if (s.values && s.values[accId] !== undefined) r = s; } return r;
+}
+// Card bill payments from this account made after its manual value was last updated (not yet reflected in it).
+function paidOutSince(accId, month) {
+  const s = lastSnap(accId, month), asOf = asOfFor(month);
+  const updTs = (s && s.updated && +s.updated[accId]) || (s ? monthEndTs(s.month) : 0), updDate = dstr(new Date(updTs));
+  return sum(D.txns.filter(t => t.type === 'transfer' && t.fromId === accId && t.date <= asOf &&
+    (t.date > updDate || (t.date === updDate && (t.ts || 0) > updTs))));
+}
+function accValue(acc, month) {
+  if (isCard(acc)) { const d = cardDue(acc, asOfFor(month)); if (d !== null) return d; }
+  const s = lastSnap(acc.id, month), v = s ? +s.values[acc.id] || 0 : 0;
+  return acc.kind === 'asset' ? v - paidOutSince(acc.id, month) : v;
+}
 function worthAt(month) {
-  const v = valuesAt(month); if (!v) return null; let a = 0, l = 0;
-  D.accounts.forEach(acc => { const x = +v[acc.id] || 0; if (acc.kind === 'liability') l += x; else a += x; });
-  return { assets: a, liab: l, net: a - l, values: v };
+  const hasSnap = D.snapshots.some(s => s.month <= month), hasLive = cards().some(c => cardDue(c, asOfFor(month)) !== null);
+  if (!hasSnap && !hasLive) return null;
+  let a = 0, l = 0; const values = {};
+  D.accounts.forEach(acc => { const x = accValue(acc, month); values[acc.id] = x; if (acc.kind === 'liability') l += x; else a += x; });
+  return { assets: a, liab: l, net: a - l, values };
 }
 function setSnapshotValues(month, values) {
   let s = D.snapshots.find(x => x.month === month);
   if (!s) { s = { month, values: {} }; D.snapshots.push(s); }
-  Object.assign(s.values, values); Store.save();
+  s.updated = s.updated || {};
+  const ts = month === curYM() ? Date.now() : monthEndTs(month);
+  Object.keys(values).forEach(k => { s.values[k] = values[k]; s.updated[k] = ts; });
+  Store.save();
 }
+// Start live tracking for a card: from now on its dues = opening + spends − refunds − payments.
+function setCardOpening(acc, amount) { acc.opening = +amount || 0; acc.openingDate = today(); acc.openingTs = Date.now(); }
 
 /* ---------- demo seed data (12 months) ---------- */
 function seed() {
@@ -804,7 +869,7 @@ function seed() {
     const m = addMonths(cur, -k), dim = daysInMonth(m), last = k === 0 ? nowDay : dim, mo = +m.slice(5);
     const add = (type, amount, category, d, method, tags = [], note = '', extra = {}) => {
       d = clamp(Math.round(d), 1, dim); if (d > last) return;
-      txns.push({ id: uid() + txns.length, type, amount: Math.round(amount), category, date: `${m}-${pad(d)}`, method, tags, note, ts: txns.length, ...extra });
+      txns.push({ id: uid() + txns.length, type, amount: Math.round(amount), category, date: `${m}-${pad(d)}`, method, tags, note, ts: txns.length, ...(method === 'Card' ? { cardId: tags.some(g => ['amazon', 'flipkart', 'myntra'].includes(g)) ? 'l3' : 'l2' } : {}), ...extra });
     };
     add('income', k >= 6 ? 125000 : 140000, 'Salary', 1, 'Bank Transfer', ['office'], 'Salary credit', { recurId: 'r0' });
     if (rnd() < .45) add('income', r(8, 32) * 1000, 'Freelance', ri(6, 26), 'UPI', ['side-project'], pick(['Logo design', 'Website project', 'Consulting call']));
@@ -849,7 +914,7 @@ function seed() {
     for (let k = 0; k < e.tenure; k++) {
       const m = addMonths(e.start, k); if (m > cur || e.id === 'e4') break;
       const d = Math.min(e.dueDay, daysInMonth(m)); if (m === cur && d > nowDay) break;
-      txns.push({ id: uid() + txns.length, type: 'expense', amount: e.amount, category: 'EMI', date: `${m}-${pad(d)}`, method: e.method, tags: ['emi'], note: `${e.name} · EMI ${k + 1}/${e.tenure}`, emiId: e.id, ts: txns.length });
+      txns.push({ id: uid() + txns.length, type: 'expense', amount: e.amount, category: 'EMI', date: `${m}-${pad(d)}`, method: e.method, tags: ['emi'], note: `${e.name} · EMI ${k + 1}/${e.tenure}`, emiId: e.id, ts: txns.length, ...(e.method === 'Card' ? { cardId: e.id === 'e2' ? 'l3' : 'l2' } : {}) });
     }
   });
   const accounts = [
@@ -857,19 +922,29 @@ function seed() {
     { id: 'a3', name: 'Fixed Deposits', kind: 'asset', group: 'FD / RD' }, { id: 'a4', name: 'Mutual Funds (SIP)', kind: 'asset', group: 'Mutual Funds' },
     { id: 'a5', name: 'Zerodha Stocks', kind: 'asset', group: 'Stocks' }, { id: 'a6', name: 'PPF', kind: 'asset', group: 'PPF / EPF' },
     { id: 'a7', name: 'EPF', kind: 'asset', group: 'PPF / EPF' }, { id: 'a8', name: 'Sovereign Gold Bond', kind: 'asset', group: 'Gold' },
-    { id: 'l1', name: 'Car Loan', kind: 'liability', group: 'Loan' }, { id: 'l2', name: 'Credit Card Due', kind: 'liability', group: 'Credit Card' },
+    { id: 'l1', name: 'Car Loan', kind: 'liability', group: 'Loan' },
+    { id: 'l2', name: 'HDFC Regalia', kind: 'liability', group: 'Credit Card', limit: 300000, dueDay: 18, opening: 0, openingDate: `${addMonths(cur, -11)}-01`, openingTs: 0 },
+    { id: 'l3', name: 'ICICI Amazon Pay', kind: 'liability', group: 'Credit Card', limit: 150000, dueDay: 5, opening: 0, openingDate: `${addMonths(cur, -11)}-01`, openingTs: 0 },
   ];
-  const v = { a1: 185000, a2: 62000, a3: 300000, a4: 420000, a5: 245000, a6: 310000, a7: 540000, a8: 150000, l1: 520000, l2: 28000 };
+  const v = { a1: 185000, a2: 62000, a3: 300000, a4: 420000, a5: 245000, a6: 310000, a7: 540000, a8: 150000, l1: 520000 };
   const snapshots = [];
   for (let k = 11; k >= 0; k--) {
     if (k < 11) {
       v.a1 = Math.round(v.a1 + r(-15000, 32000)); v.a2 = Math.round(v.a2 + r(-3000, 6000)); v.a3 = Math.round(v.a3 * 1.006);
       v.a4 = Math.round((v.a4 + 25000) * (1 + r(-.03, .045))); v.a5 = Math.round(v.a5 * (1 + r(-.06, .08)));
-      v.a6 += 12500; v.a7 += 14400; v.a8 = Math.round(v.a8 * (1 + r(-.01, .03))); v.l1 = Math.max(0, v.l1 - 9200); v.l2 = Math.round(r(12000, 48000));
+      v.a6 += 12500; v.a7 += 14400; v.a8 = Math.round(v.a8 * (1 + r(-.01, .03))); v.l1 = Math.max(0, v.l1 - 9200);
       if (k === 5) v.a3 += 100000;
     }
     snapshots.push({ month: addMonths(cur, -k), values: { ...v } });
   }
+  // monthly card bill payments (previous month's card spends) from HDFC Savings on each card's due day
+  accounts.filter(a => a.group === 'Credit Card').forEach(c => {
+    for (let k = 10; k >= 0; k--) {
+      const m = addMonths(cur, -k), prev = addMonths(m, -1), date = `${m}-${pad(c.dueDay)}`; if (date > today()) continue;
+      const amt = sum(txns.filter(t => t.cardId === c.id && t.date.startsWith(prev)), t => t.type === 'income' ? -t.amount : t.amount);
+      if (amt > 0) txns.push({ id: uid() + txns.length, type: 'transfer', amount: amt, category: 'Card payment', date, method: 'Bank Transfer', note: `${c.name} bill`, tags: ['card-bill'], fromId: 'a1', toId: c.id, ts: txns.length });
+    }
+  });
   const since = addMonths(cur, -11), recurring = [
     { id: 'r0', type: 'income', name: 'Salary credit', icon: '💼', amount: 140000, category: 'Salary', dueDay: 1, method: 'Bank Transfer', tags: ['office'], active: true, since },
     { id: 'r1', type: 'expense', name: 'House rent', icon: '🏠', amount: 28000, category: 'Rent', dueDay: 5, method: 'Bank Transfer', tags: ['home'], active: true, since },
@@ -1155,11 +1230,21 @@ const methodIcon = m => (METHODS.find(x => x[0] === m) || ['', '💳'])[1];
 const shortDate = s => { const d = parseD(s); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 function txRow(t, showDate) {
   const c = cat(t.type, t.category), tags = (t.tags || []).slice(0, 2).map(g => `<span class="tag">#${esc(g)}</span>`).join('');
-  const fut = isFuture(t);
+  const fut = isFuture(t), badge = fut ? '<span class="tag sched">⏳ Upcoming</span>' : '';
+  if (t.type === 'transfer') {
+    const f = accById(t.fromId), to = accById(t.toId);
+    return `<div class="tx${fut ? ' future' : ''}" data-action="edit-tx" data-id="${esc(t.id)}">
+    <div class="tx-ic" style="background:rgba(14,165,233,.14)">💳</div>
+    <div class="tx-main"><div class="tx-title">${esc(t.note || 'Card bill payment')}</div>
+      <div class="tx-sub">${badge}<span>🏦 ${esc(f ? f.name : 'Account')} → ${esc(to ? to.name : 'Card')}</span></div></div>
+    <div class="tx-amt transfer">↔ ${fmtX(t.amount)}${showDate ? `<small>${shortDate(t.date)}</small>` : ''}</div>
+  </div>`;
+  }
+  const card = t.cardId && accById(t.cardId), via = card ? card.name : (t.method || '');
   return `<div class="tx${fut ? ' future' : ''}" data-action="edit-tx" data-id="${esc(t.id)}">
     <div class="tx-ic" style="background:${hexA(c.color, .16)}">${c.icon}</div>
     <div class="tx-main"><div class="tx-title">${esc(t.note || t.category)}</div>
-      <div class="tx-sub">${fut ? '<span class="tag sched">⏳ Upcoming</span>' : ''}${t.note ? `<span>${esc(t.category)}</span>·` : ''}<span>${methodIcon(t.method)} ${esc(t.method || '')}</span>${tags}</div></div>
+      <div class="tx-sub">${badge}${t.note ? `<span>${esc(t.category)}</span>·` : ''}<span>${methodIcon(t.method)} ${esc(via)}</span>${tags}</div></div>
     <div class="tx-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${fmtX(t.amount)}${showDate ? `<small>${shortDate(t.date)}</small>` : ''}</div>
   </div>`;
 }
@@ -1221,7 +1306,8 @@ function renderHome(el) {
       </div></div>`;
   }
 
-  // recurring bills + short-term EMIs
+  // live credit card dues, recurring bills, short-term EMIs
+  if (isCur) h += cardsCard(false);
   h += recurCard(m);
   h += emiCard(m);
 
@@ -1339,7 +1425,7 @@ ACTIONS['pick-month'] = () => {
 let txLimit = 120;
 function renderTxns(el) {
   txLimit = 120;
-  const f = S.f, types = f.type === 'all' ? ['expense', 'income'] : [f.type];
+  const f = S.f, types = f.type === 'all' ? ['expense', 'income'] : f.type === 'transfer' ? [] : [f.type];
   const catOpts = types.map(ty => `<optgroup label="${ty === 'expense' ? 'Expense' : 'Income'}">${D.categories[ty].map(c => `<option value="${esc(c.name)}" ${f.cat === c.name ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
   const tags = allTags().slice(0, 14);
   if (f.tag && !tags.includes(f.tag)) tags.unshift(f.tag);
@@ -1351,7 +1437,7 @@ function renderTxns(el) {
     <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input class="inp" id="txQ" type="search" placeholder="Search notes, tags, amount…" value="${esc(f.q)}"></div>
     <div class="filters">
-      <div class="seg">${[['all', 'All'], ['expense', 'Expenses'], ['income', 'Income']].map(([v, l]) => `<button data-action="tx-type" data-v="${v}" class="${f.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['all', 'All'], ['expense', 'Expenses'], ['income', 'Income'], ...(D.txns.some(t => t.type === 'transfer') ? [['transfer', 'Card bills']] : [])].map(([v, l]) => `<button data-action="tx-type" data-v="${v}" class="${f.type === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="filter-row">
         <select class="inp" id="fCat"><option value="">All categories</option>${catOpts}</select>
         <select class="inp" id="fMethod"><option value="">All methods</option>${METHODS.map(([m, i]) => `<option ${f.method === m ? 'selected' : ''} value="${m}">${i} ${m}</option>`).join('')}</select>
@@ -1411,6 +1497,7 @@ function openTxForm(tx, preset = {}) {
       <div><label class="lbl">Paid via</label><select class="inp" id="fMethod">${METHODS.map(([m, i]) => `<option value="${m}" ${fs.method === m ? 'selected' : ''}>${i} ${m}</option>`).join('')}</select></div></div>
     <div class="chips" style="margin-top:8px"><button type="button" class="chip" data-d="${ytd}">Yesterday</button><button type="button" class="chip" data-d="${today()}">Today</button><button type="button" class="chip" data-d="${tmr}">Tomorrow</button><button type="button" class="chip" data-d="${addMonths(curYM(), 1)}-01">1st ${MONTHS[+addMonths(curYM(), 1).slice(5) - 1]}</button></div>
     <div class="xs" id="fDateHint" style="margin-top:8px;color:var(--warn);font-weight:600"></div>
+    <div id="fCardWrap"></div>
     <label class="lbl">Note</label><input class="inp" id="fNote" maxlength="80" placeholder="What was it for?" value="${esc(fs.note)}">
     <label class="lbl">Tags</label><div class="tag-box" id="fTagBox"><input id="fTagIn" placeholder="Add tag, press enter" autocomplete="off"></div>
     <div class="tag-sugg" id="fTagSugg"></div>
@@ -1447,7 +1534,7 @@ function openTxForm(tx, preset = {}) {
     $$('#fType button', body).forEach(b => b.onclick = () => {
       fs.type = b.dataset.v; $$('#fType button', body).forEach(x => x.classList.toggle('on', x === b));
       if (!D.categories[fs.type].some(c => c.name === fs.category)) fs.category = '';
-      save.className = 'btn t-' + fs.type; if (!editing) save.textContent = 'Add ' + fs.type; drawCats();
+      save.className = 'btn t-' + fs.type; if (!editing) save.textContent = 'Add ' + fs.type; drawCats(); drawCard();
     });
     const dateHint = () => {
       const v = $('#fDate', body).value;
@@ -1455,6 +1542,19 @@ function openTxForm(tx, preset = {}) {
     };
     $$('.chips [data-d]', body).forEach(b => b.onclick = () => { $('#fDate', body).value = b.dataset.d; dateHint(); });
     $('#fDate', body).addEventListener('input', dateHint); dateHint();
+    // Which credit card? (only when paid via Card) — card spends add to that card's dues
+    if (!fs.cardId) fs.cardId = defaultCardId();
+    const drawCard = () => {
+      const w = $('#fCardWrap', body);
+      if ($('#fMethod', body).value !== 'Card' || serverOutdated()) { w.innerHTML = ''; return; }
+      const cs = cards();
+      w.innerHTML = cs.length
+        ? `<label class="lbl">Which card?</label><div class="chips" style="flex-wrap:wrap">${cs.map(c => `<button type="button" class="chip${c.id === fs.cardId ? ' on' : ''}" data-card="${esc(c.id)}">💳 ${esc(c.name)} <span class="x" style="opacity:.7">${fmtC(cardDue(c) || 0)} due</span></button>`).join('')}</div>
+           <div class="xs muted" style="margin-top:6px">${fs.type === 'income' ? 'Refund/cashback to the card reduces its dues.' : "Adds to the card's dues — pay it later with “Pay card bill”."}</div>`
+        : `<div class="xs muted" style="margin-top:10px">💡 <a class="link" data-action="acc-add-card">Add your credit card</a> to track what you owe on it.</div>`;
+      $$('[data-card]', w).forEach(b => b.onclick = () => { fs.cardId = b.dataset.card; drawCard(); });
+    };
+    $('#fMethod', body).addEventListener('change', drawCard); drawCard();
     save.onclick = () => {
       const a = parseAmt(amt.value), date = $('#fDate', body).value;
       if (!(a > 0)) { toast('Enter a valid amount'); amt.focus(); return; }
@@ -1463,6 +1563,7 @@ function openTxForm(tx, preset = {}) {
       if ($('#fTagIn', body).value) addTag($('#fTagIn', body).value);
       const rec = { ...(tx || {}), id: tx ? tx.id : uid(), type: fs.type, amount: a, category: fs.category, date, method: $('#fMethod', body).value, note: $('#fNote', body).value.trim(), tags: fs.tags, ts: tx ? tx.ts : Date.now() };
       lastMethod = rec.method;
+      if (rec.method === 'Card' && fs.cardId && accById(fs.cardId) && !serverOutdated()) { rec.cardId = fs.cardId; lastCardId = fs.cardId; } else delete rec.cardId;
       if (editing) D.txns[D.txns.findIndex(t => t.id === tx.id)] = rec; else D.txns.push(rec);
       const rep = $('#fRepeat', body);
       if (rep && rep.checked) {
@@ -1485,7 +1586,7 @@ function openTxForm(tx, preset = {}) {
   });
 }
 ACTIONS['add'] = el => openTxForm(null, { date: el.dataset.date });
-ACTIONS['edit-tx'] = el => { const t = D.txns.find(x => x.id === el.dataset.id); if (t) openTxForm(t); };
+ACTIONS['edit-tx'] = el => { const t = D.txns.find(x => x.id === el.dataset.id); if (t) t.type === 'transfer' ? payCardForm(null, t) : openTxForm(t); };
 
 /* ================= INSIGHTS DASHBOARD ================= */
 const FIXED = ['Rent', 'EMI', 'Bills & Utilities', 'Subscriptions'];
@@ -1616,16 +1717,21 @@ function renderWorth(el) {
     <div class="budget-top"><div><span class="big">${fmtC(liquid)}</span> <span class="muted sm">liquid</span></div><div class="sm muted">Target ${tgt} months</div></div>
     <div class="ef-meter">${Array.from({ length: tgt }, (_, i) => `<span class="${i < Math.floor(cover) ? 'on' : ''}"></span>`).join('')}</div></div>`;
 
-  // accounts
-  const accRows = kind => D.accounts.filter(a => a.kind === kind).sort((a, b) => (+w.values[b.id] || 0) - (+w.values[a.id] || 0)).map(a => {
+  // credit cards (live) + accounts
+  h += cardsCard(true);
+  const live = a => isCard(a) && !serverOutdated(), cur0 = cur;
+  const accRows = kind => D.accounts.filter(a => a.kind === kind && !live(a)).sort((a, b) => (+w.values[b.id] || 0) - (+w.values[a.id] || 0)).map(a => {
     const g = groupInfo(kind, a.group), v = +w.values[a.id] || 0, p = pw ? +pw.values[a.id] || 0 : 0, d = v - p;
-    const good = kind === 'asset' ? d >= 0 : d <= 0;
+    const good = kind === 'asset' ? d >= 0 : d <= 0, po = kind === 'asset' ? paidOutSince(a.id, cur0) : 0;
     return `<div class="acc" data-action="acc-open" data-id="${esc(a.id)}"><div class="ic" style="background:${hexA(g.color, .16)}">${g.icon}</div>
-      <div class="mid"><div class="n">${esc(a.name)}</div><div class="g">${esc(a.group)}</div></div>
+      <div class="mid"><div class="n">${esc(a.name)}</div><div class="g">${esc(a.group)}${po ? ` · −${fmtC(po)} card bills since update` : ''}</div></div>
       <div class="r"><div class="v">${fmt(v)}</div><div class="dl ${d === 0 ? 'faint' : good ? 'pos' : 'neg'}">${d === 0 ? 'no change' : `${d > 0 ? '+' : '−'}${fmtC(Math.abs(d))}`}</div></div></div>`;
   }).join('');
   h += `<div class="card"><div class="card-h"><h3>Assets</h3><span class="pos num" style="font-weight:700">${fmt(w.assets)}</span></div>${accRows('asset') || '<p class="muted sm">No assets yet.</p>'}</div>`;
-  if (D.accounts.some(a => a.kind === 'liability')) h += `<div class="card"><div class="card-h"><h3>Liabilities</h3><span class="neg num" style="font-weight:700">${fmt(w.liab)}</span></div>${accRows('liability')}</div>`;
+  if (D.accounts.some(a => a.kind === 'liability')) {
+    const cardTot = sum(D.accounts.filter(live), a => w.values[a.id]);
+    h += `<div class="card"><div class="card-h"><div><h3>Liabilities</h3>${cardTot ? `<div class="sub">incl. ${fmt(cardTot)} credit card dues</div>` : ''}</div><span class="neg num" style="font-weight:700">${fmt(w.liab)}</span></div>${accRows('liability') || '<p class="muted sm">Only credit cards — see above.</p>'}</div>`;
+  }
 
   h += emiWorthCard();
 
@@ -1638,12 +1744,17 @@ function renderWorth(el) {
 ACTIONS['nw-update'] = () => {
   let month = curYM();
   const draw = body => {
-    const vals = valuesAt(month) || {}, has = D.snapshots.some(s => s.month === month);
-    const row = a => { const g = groupInfo(a.kind, a.group); return `<div class="uv-row"><div class="ic" style="background:${hexA(g.color, .16)}">${g.icon}</div><div class="n">${esc(a.name)}<small>${esc(a.group)}${a.kind === 'liability' ? ' · owed' : ''}</small></div><input class="inp" inputmode="decimal" data-id="${esc(a.id)}" value="${vals[a.id] ?? ''}" placeholder="0"></div>`; };
+    const has = D.snapshots.some(s => s.month === month), live = a => isCard(a) && !serverOutdated();
+    const row = a => {
+      const g = groupInfo(a.kind, a.group), po = a.kind === 'asset' ? paidOutSince(a.id, month) : 0, s = lastSnap(a.id, month);
+      return `<div class="uv-row"><div class="ic" style="background:${hexA(g.color, .16)}">${g.icon}</div><div class="n">${esc(a.name)}<small>${esc(a.group)}${a.kind === 'liability' ? ' · owed' : ''}${po ? ` · incl. −${fmtC(po)} card bills` : ''}</small></div><input class="inp" inputmode="decimal" data-id="${esc(a.id)}" value="${s || po ? accValue(a, month) : ''}" placeholder="0"></div>`;
+    };
+    const assets = D.accounts.filter(a => a.kind === 'asset'), liabs = D.accounts.filter(a => a.kind === 'liability' && !live(a));
     body.innerHTML = `<div class="yr-nav"><button class="icon-btn" data-mv="-1">‹</button><b>${mLabel(month, true)}</b><button class="icon-btn" data-mv="1" ${month >= curYM() ? 'disabled style="opacity:.3"' : ''}>›</button></div>
       <p class="muted sm" style="margin-bottom:8px">${has ? 'Editing saved values for this month.' : 'Pre-filled from the previous month — adjust what changed.'}</p>
-      <div class="sec-title">Assets</div>${D.accounts.filter(a => a.kind === 'asset').map(row).join('')}
-      ${D.accounts.some(a => a.kind === 'liability') ? `<div class="sec-title">Liabilities</div>${D.accounts.filter(a => a.kind === 'liability').map(row).join('')}` : ''}
+      <div class="sec-title">Assets</div>${assets.map(row).join('')}
+      ${liabs.length ? `<div class="sec-title">Liabilities</div>${liabs.map(row).join('')}` : ''}
+      ${D.accounts.some(live) ? '<p class="xs muted" style="margin-top:12px">💳 Credit cards update automatically from card spends and bill payments.</p>' : ''}
       <div class="sheet-actions"><button class="btn primary" id="uvSave">Save ${mLabel(month)}</button></div>`;
     $$('[data-mv]', body).forEach(b => b.onclick = () => { month = addMonths(month, +b.dataset.mv); draw(body); });
     $('#uvSave', body).onclick = () => {
@@ -1653,42 +1764,121 @@ ACTIONS['nw-update'] = () => {
   };
   openSheet('Update values', '', draw);
 };
-function accountForm(acc) {
-  const f = acc ? { ...acc } : { kind: 'asset', group: 'Bank', name: '' };
-  const cur = acc ? (valuesAt(curYM()) || {})[acc.id] : '';
-  openSheet(acc ? 'Edit account' : 'Add account', '', body => {
+function accountForm(acc, preset) {
+  const f = acc ? { ...acc } : { kind: 'asset', group: 'Bank', name: '', ...(preset || {}) };
+  const liveCard = () => f.kind === 'liability' && f.group === 'Credit Card' && !serverOutdated();
+  const curDue = acc && isCard(acc) && !serverOutdated() ? cardDue(acc) : null;
+  const cur = acc ? (curDue !== null ? curDue : accValue(acc, curYM())) : '';
+  openSheet(acc ? 'Edit account' : preset && preset.group === 'Credit Card' ? 'Add credit card' : 'Add account', '', body => {
     const draw = () => {
+      const lc = liveCard();
       body.innerHTML = `<div class="seg">${['asset', 'liability'].map(k => `<button data-k="${k}" class="${f.kind === k ? 'on' : ''}">${k === 'asset' ? '📈 Asset' : '📉 Liability'}</button>`).join('')}</div>
-        <label class="lbl">Name</label><input class="inp" id="acName" maxlength="40" placeholder="${f.kind === 'asset' ? 'e.g. ICICI Savings' : 'e.g. Home Loan'}" value="${esc(f.name)}">
+        <label class="lbl">Name</label><input class="inp" id="acName" maxlength="40" placeholder="${lc ? 'e.g. HDFC Regalia' : f.kind === 'asset' ? 'e.g. ICICI Savings' : 'e.g. Home Loan'}" value="${esc(f.name)}">
         <label class="lbl">Type</label><div class="cat-grid">${GROUPS[f.kind].map(([g, i, c]) => `<button class="cat-btn${f.group === g ? ' on' : ''}" style="--c:${c}" data-g="${esc(g)}"><span class="e" style="background:${hexA(c, .16)}">${i}</span>${esc(g)}</button>`).join('')}</div>
-        <label class="lbl">${acc ? 'Value' : 'Current value'} (${mLabel(curYM(), true)})</label><input class="inp" id="acVal" inputmode="decimal" placeholder="₹ 0" value="${cur ?? ''}">
+        ${lc ? `<div class="row2"><div><label class="lbl">Credit limit</label><input class="inp" id="acLimit" inputmode="numeric" placeholder="₹ optional" value="${f.limit || ''}"></div>
+          <div><label class="lbl">Bill due day</label><input class="inp" id="acDue" inputmode="numeric" placeholder="e.g. 18" value="${f.dueDay || ''}"></div></div>` : ''}
+        <label class="lbl">${lc ? 'Outstanding right now' : `${acc ? 'Value' : 'Current value'} (${mLabel(curYM(), true)})`}</label><input class="inp" id="acVal" inputmode="decimal" placeholder="₹ 0" value="${cur ?? ''}">
+        ${lc ? `<p class="xs muted" style="margin-top:6px">${acc ? 'Updates automatically from card spends, refunds and bill payments. Change it only to match your card statement.' : 'Enter what you currently owe (0 if nothing). From now on it updates automatically.'}</p>` : ''}
         ${acc ? `<label class="lbl">History</label><div id="acHist"></div>` : ''}
-        <div class="sheet-actions">${acc ? '<button class="btn danger-ghost" id="acDel">Delete</button>' : ''}<button class="btn primary" id="acSave">${acc ? 'Save' : 'Add account'}</button></div>`;
-      $$('[data-k]', body).forEach(b => b.onclick = () => { f.name = $('#acName', body).value; f.kind = b.dataset.k; f.group = GROUPS[f.kind][0][0]; draw(); });
-      $$('[data-g]', body).forEach(b => b.onclick = () => { f.name = $('#acName', body).value; f.group = b.dataset.g; draw(); });
+        <div class="sheet-actions">${acc ? '<button class="btn danger-ghost" id="acDel">Delete</button>' : ''}<button class="btn primary" id="acSave">${acc ? 'Save' : lc ? 'Add card' : 'Add account'}</button></div>`;
+      const keep = () => { f.name = $('#acName', body).value; if ($('#acLimit', body)) { f.limit = parseAmt($('#acLimit', body).value); f.dueDay = clamp(Math.round(parseAmt($('#acDue', body).value)) || 0, 0, 31); } };
+      $$('[data-k]', body).forEach(b => b.onclick = () => { keep(); f.kind = b.dataset.k; f.group = GROUPS[f.kind][0][0]; draw(); });
+      $$('[data-g]', body).forEach(b => b.onclick = () => { keep(); f.group = b.dataset.g; draw(); });
       if (acc) {
-        const ms = monthsBetween(addMonths(curYM(), -11), curYM()), vs = ms.map(m => { const v = valuesAt(m); return v && v[acc.id] !== undefined ? +v[acc.id] : null; });
+        const ms = monthsBetween(addMonths(curYM(), -11), curYM());
+        const vs = ms.map(m => lastSnap(acc.id, m) || (isCard(acc) && cardDue(acc, asOfFor(m)) !== null) ? accValue(acc, m) : null);
         $('#acHist', body).innerHTML = lineChart({ labels: ms.map(m => MONTHS[+m.slice(5) - 1]), tipLabels: ms.map(m => mLabel(m, true)), h: 140, zeroBase: false, series: [{ name: acc.name, color: groupInfo(f.kind, f.group).color, values: vs, area: true, dotR: 2.5 }] });
         $('#acDel', body).onclick = async () => {
-          if (!await confirmDlg('Delete account?', `"${acc.name}" and its value history will be removed.`)) return;
-          D.accounts = D.accounts.filter(a => a.id !== acc.id); D.snapshots.forEach(s => delete s.values[acc.id]);
+          if (!await confirmDlg('Delete account?', `"${acc.name}" and its value history will be removed. Transactions stay in your history.`)) return;
+          D.accounts = D.accounts.filter(a => a.id !== acc.id); D.snapshots.forEach(s => { delete s.values[acc.id]; if (s.updated) delete s.updated[acc.id]; });
           Store.save(); closeSheet(); render(); toast('Account deleted');
         };
       }
       $('#acSave', body).onclick = () => {
-        const name = $('#acName', body).value.trim(); if (!name) { toast('Enter a name'); return; }
-        const val = parseAmt($('#acVal', body).value);
-        if (acc) Object.assign(D.accounts.find(a => a.id === acc.id), { name, kind: f.kind, group: f.group });
-        else D.accounts.push({ id: 'ac' + uid(), name, kind: f.kind, group: f.group });
-        const id = acc ? acc.id : D.accounts[D.accounts.length - 1].id;
-        setSnapshotValues(curYM(), { [id]: val }); closeSheet(); render(); toast(acc ? 'Account updated' : 'Account added ✓');
+        keep(); const name = f.name.trim(); if (!name) { toast('Enter a name'); return; }
+        const val = parseAmt($('#acVal', body).value), lc2 = liveCard();
+        let obj = acc ? D.accounts.find(a => a.id === acc.id) : null;
+        if (obj) Object.assign(obj, { name, kind: f.kind, group: f.group });
+        else { obj = { id: 'ac' + uid(), name, kind: f.kind, group: f.group }; D.accounts.push(obj); }
+        if (lc2) {
+          obj.limit = f.limit || 0; obj.dueDay = f.dueDay || 0;
+          if (!obj.openingDate || curDue === null || val !== curDue) setCardOpening(obj, val);
+          Store.save();
+        } else setSnapshotValues(curYM(), { [obj.id]: val });
+        closeSheet(); render(); toast(acc ? 'Account updated' : lc2 ? 'Card added ✓ — pick it when you pay by Card' : 'Account added ✓');
       };
     };
     draw();
   });
 }
 ACTIONS['acc-add'] = () => accountForm(null);
+ACTIONS['acc-add-card'] = () => { if (serverOutdated()) { toast('⚠️ Update your Apps Script (Code.gs) first — see SETUP.md'); return; } accountForm(null, { kind: 'liability', group: 'Credit Card' }); };
 ACTIONS['acc-open'] = el => accountForm(D.accounts.find(a => a.id === el.dataset.id));
+
+/* ---------- credit cards: dues panel + bill payment (transfer bank → card) ---------- */
+function cardsCard(full) {
+  const cs = cards();
+  if (serverOutdated()) return full && cs.length ? `<div class="card"><div class="card-h"><h3>💳 Credit cards</h3></div><p class="muted sm">Update your Apps Script (Code.gs, see SETUP.md) to turn on live card dues and bill payments.</p></div>` : '';
+  if (!cs.length) return full ? `<div class="card"><div class="card-h"><div><h3>💳 Credit cards</h3><div class="sub">Track what you owe on each card</div></div></div>
+    <p class="muted sm" style="margin-bottom:12px">Card spends add to the card's dues right away; paying the bill moves money from your bank to the card.</p>
+    <button class="btn ghost block" data-action="acc-add-card">+ Add credit card</button></div>` : '';
+  const m = curYM(), list = cs.map(c => ({ c, due: cardDue(c) || 0, spent: sum(D.txns.filter(t => t.cardId === c.id && t.type === 'expense' && t.date.startsWith(m) && !isFuture(t))) }));
+  const total = sum(list, x => x.due);
+  if (!full && total <= 0) return '';
+  const rows = list.map(({ c, due, spent }) => {
+    const lim = +c.limit || 0, util = lim ? due / lim * 100 : 0;
+    return `<div class="emi"><div class="emi-top">
+      <div class="ic" style="background:rgba(251,113,133,.16);cursor:pointer" data-action="acc-open" data-id="${esc(c.id)}">💳</div>
+      <div class="mid" style="cursor:pointer" data-action="acc-open" data-id="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="g">${fmt(spent)} spent this month${c.dueDay ? ` · bill due ${ordinal(c.dueDay)}` : ''}</div></div>
+      <div class="r"><b class="num ${due > 0 ? 'neg' : 'pos'}">${due > 0 ? fmt(due) : due < 0 ? fmt(-due) + ' credit' : '₹0'}</b>${due > 0 ? `<button class="btn xs primary" data-action="pay-card" data-id="${esc(c.id)}">Pay bill</button>` : '<span class="pill ok">✓ Clear</span>'}</div></div>
+      ${lim ? `<div class="emi-prog"><i style="width:${clamp(util, 0, 100)}%;${util > 70 ? 'background:linear-gradient(90deg,#f59e0b,#f43f5e)' : ''}"></i></div><div class="emi-meta"><span>${util.toFixed(0)}% of ${fmtC(lim)} limit used</span><span>${fmtC(Math.max(0, lim - due))} available</span></div>` : ''}</div>`;
+  }).join('');
+  return `<div class="card"><div class="card-h"><div><h3>💳 Credit card dues</h3><div class="sub">Live · card spends add, bill payments reduce</div></div><span class="neg num" style="font-weight:700">${fmt(total)}</span></div>${rows}
+    ${full ? '<button class="btn ghost block" style="margin-top:10px" data-action="acc-add-card">+ Add credit card</button>' : ''}</div>`;
+}
+function payCardForm(cardId, t) {
+  if (serverOutdated()) { toast('⚠️ Update your Apps Script (Code.gs) first — see SETUP.md'); return; }
+  const cs = cards(), froms = payFromAccounts();
+  if (!cs.length) { toast('Add a credit card first'); return; }
+  const f = t ? { toId: t.toId, fromId: t.fromId, amount: t.amount, date: t.date, note: t.note || '' }
+    : { toId: cardId || defaultCardId(), fromId: (froms.find(a => a.id === D.settings.payFrom) || froms[0] || {}).id || '', amount: null, date: today(), note: '' };
+  openSheet(t ? 'Edit card payment' : 'Pay card bill', '', function draw(body) {
+    const card = accById(f.toId) || cs[0], now = cardDue(card) || 0;
+    const dueBefore = t && t.toId === card.id && !isFuture(t) ? now + t.amount : now;
+    if (f.amount === null) f.amount = Math.max(0, dueBefore);
+    const spentM = sum(D.txns.filter(x => x.cardId === card.id && x.type === 'expense' && x.date.startsWith(addMonths(curYM(), -1))));
+    body.innerHTML = `
+      <label class="lbl" style="margin-top:4px">Card</label><div class="chips" style="flex-wrap:wrap">${cs.map(c => `<button class="chip${c.id === card.id ? ' on' : ''}" data-to="${esc(c.id)}">💳 ${esc(c.name)}</button>`).join('')}</div>
+      <div class="amt-wrap"><span class="amt-cur">₹</span><input id="pcAmt" inputmode="decimal" value="${f.amount || ''}" placeholder="0" aria-label="Amount"></div>
+      <div class="amt-hint">Outstanding on ${esc(card.name)}: <b>${fmt(dueBefore)}</b></div>
+      <div class="chips" style="justify-content:center;margin-top:8px"><button class="chip" data-amt="${Math.max(0, dueBefore)}">Full due</button>${spentM ? `<button class="chip" data-amt="${spentM}">Last month's spends ${fmtC(spentM)}</button>` : ''}</div>
+      <label class="lbl">Pay from</label>${froms.length ? `<select class="inp" id="pcFrom">${froms.map(a => `<option value="${esc(a.id)}" ${a.id === f.fromId ? 'selected' : ''}>${groupInfo('asset', a.group).icon} ${esc(a.name)} · ${fmtC(accValue(a, curYM()))}</option>`).join('')}</select>` : '<p class="muted sm">Add a bank account in Net Worth first.</p>'}
+      <label class="lbl">Date</label><input class="inp" type="date" id="pcDate" value="${f.date}">
+      <label class="lbl">Note</label><input class="inp" id="pcNote" maxlength="60" placeholder="${esc(card.name)} bill" value="${esc(f.note)}">
+      <p class="xs muted" style="margin-top:12px">💡 This is a transfer, not an expense — the card spends were already counted when you made them. It reduces the card's dues and the bank balance; your net worth stays the same.</p>
+      <div class="sheet-actions">${t ? '<button class="btn danger-ghost" id="pcDel">Delete</button>' : ''}<button class="btn primary" id="pcSave">${t ? 'Save' : 'Pay bill'}</button></div>`;
+    const read = () => { f.amount = parseAmt($('#pcAmt', body).value); f.date = $('#pcDate', body).value; f.note = $('#pcNote', body).value.trim(); const fr = $('#pcFrom', body); if (fr) f.fromId = fr.value; };
+    $$('[data-to]', body).forEach(b => b.onclick = () => { read(); f.toId = b.dataset.to; if (!t) f.amount = null; draw(body); });
+    $$('[data-amt]', body).forEach(b => b.onclick = () => { $('#pcAmt', body).value = b.dataset.amt; });
+    $('#pcSave', body).onclick = () => {
+      read();
+      if (!(f.amount > 0)) { toast('Enter the amount paid'); return; }
+      if (!f.fromId) { toast('Add a bank account to pay from'); return; }
+      if (!f.date) { toast('Pick a date'); return; }
+      const from = accById(f.fromId), rec = { ...(t || {}), id: t ? t.id : uid(), type: 'transfer', amount: f.amount, category: 'Card payment', date: f.date, method: 'Bank Transfer',
+        note: f.note || `${card.name} bill`, tags: t ? t.tags || [] : ['card-bill'], fromId: f.fromId, toId: card.id, ts: t ? t.ts : Date.now() };
+      if (t) D.txns[D.txns.findIndex(x => x.id === t.id)] = rec; else D.txns.push(rec);
+      D.settings.payFrom = f.fromId; Store.save(); closeSheet(); render();
+      const msg = `${f.date > today() ? '⏳ Scheduled' : '✓ Paid'} ${fmt(f.amount)} to ${card.name} from ${from ? from.name : 'bank'}`;
+      if (t) toast(msg); else toast(msg, 'Undo', () => { D.txns = D.txns.filter(x => x.id !== rec.id); Store.save(); render(); });
+    };
+    if (t) $('#pcDel', body).onclick = async () => {
+      if (!await confirmDlg('Delete payment?', `${fmt(t.amount)} to ${card.name} will be removed — the card dues and bank balance go back up.`)) return;
+      D.txns = D.txns.filter(x => x.id !== t.id); Store.save(); closeSheet(); render(); toast('Payment deleted');
+    };
+  });
+}
+ACTIONS['pay-card'] = el => payCardForm(el.dataset.id);
 
 /* ================= SETTINGS ================= */
 ACTIONS['settings'] = () => {
@@ -1758,7 +1948,8 @@ function download(name, text, type) {
 ACTIONS['export-json'] = () => { download(`paisa-backup-${today()}.json`, JSON.stringify(D, null, 2), 'application/json'); toast('Backup downloaded ✓'); };
 ACTIONS['export-csv'] = () => {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Date', 'Type', 'Category', 'Amount (INR)', 'Method', 'Note', 'Tags'], ...D.txns.slice().sort(byDateDesc).map(t => [t.date, t.type, t.category, t.amount, t.method, t.note, (t.tags || []).join(' ')])];
+  const an = id => (accById(id) || {}).name || '';
+  const rows = [['Date', 'Type', 'Category', 'Amount (INR)', 'Method', 'Card / Account', 'Note', 'Tags'], ...D.txns.slice().sort(byDateDesc).map(t => [t.date, t.type, t.category, t.amount, t.method, t.type === 'transfer' ? `${an(t.fromId)} → ${an(t.toId)}` : an(t.cardId), t.note, (t.tags || []).join(' ')])];
   download(`paisa-transactions-${today()}.csv`, '\ufeff' + rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
   toast('CSV downloaded ✓');
 };
@@ -1876,7 +2067,7 @@ function emiWorthCard() {
 ACTIONS['emi-pay'] = el => {
   const e = D.emis.find(x => x.id === el.dataset.id); if (!e) return;
   const paid = emiPaid(e); if (paid >= e.tenure) return;
-  const k = paid + 1, t = { id: uid(), type: 'expense', amount: e.amount, category: 'EMI', date: today(), method: e.method || 'Card', note: `${e.name} · EMI ${k}/${e.tenure}`, tags: ['emi'], emiId: e.id, ts: Date.now() };
+  const k = paid + 1, t = { id: uid(), type: 'expense', amount: e.amount, category: 'EMI', date: today(), method: e.method || 'Card', note: `${e.name} · EMI ${k}/${e.tenure}`, tags: ['emi'], emiId: e.id, ts: Date.now(), ...((e.method || 'Card') === 'Card' && defaultCardId() && !serverOutdated() ? { cardId: defaultCardId() } : {}) };
   D.txns.push(t); Store.save(); render();
   toast(k === e.tenure ? `🎉 ${e.name} fully paid off!` : `EMI ${k}/${e.tenure} paid · ${fmt(e.amount)}`, 'Undo', () => { D.txns = D.txns.filter(x => x.id !== t.id); Store.save(); render(); });
 };
@@ -1984,7 +2175,7 @@ function recRow(r, m, withBtn) {
 }
 function recRecord(r, m) {
   const date = m === curYM() ? today() : `${m}-${pad(Math.min(r.dueDay, daysInMonth(m)))}`;
-  const t = { id: uid(), type: r.type, amount: r.amount, category: r.category, date, method: r.method, note: r.name, tags: [...(r.tags || [])], recurId: r.id, ts: Date.now() };
+  const t = { id: uid(), type: r.type, amount: r.amount, category: r.category, date, method: r.method, note: r.name, tags: [...(r.tags || [])], recurId: r.id, ts: Date.now(), ...(r.method === 'Card' && defaultCardId() && !serverOutdated() ? { cardId: defaultCardId() } : {}) };
   D.txns.push(t); return t;
 }
 
