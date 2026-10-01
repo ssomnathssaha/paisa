@@ -66,6 +66,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .pw-field .lk{position:absolute;left:17px;top:19px;color:var(--muted)}
 .pw-field .eye{position:absolute;right:8px;top:8px;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:var(--muted)}
 .lock-err{color:var(--expense);font-size:13px;min-height:20px;margin-top:10px}
+.bio-btn{margin-top:12px;width:100%}
 .lock-hint{margin-top:22px;font-size:12px;color:var(--faint)}
 .lock-hint code{background:var(--surface-2);padding:2px 7px;border-radius:6px;color:var(--muted)}
 .shake{animation:shake .42s}
@@ -430,6 +431,7 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
       <button type="button" class="eye" id="pwEye" aria-label="Show password"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
     <button class="btn primary block" id="unlockBtn" type="submit">Unlock</button>
+    <button class="btn block bio-btn" id="bioBtn" type="button" hidden>👆 Unlock with fingerprint</button>
     <div class="lock-err" id="lockErr"></div>
     <div class="lock-hint" id="lockHint"></div>
   </form>
@@ -1215,6 +1217,55 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); $('#dialog').classList.remove('open'); } });
 
+
+/* ---------- fingerprint unlock (WebAuthn gate + on-device encrypted password) ---------- */
+const Bio = {
+  K: 'paisa.bio.v1',
+  supported: () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext),
+  enabled() { try { return !!localStorage.getItem(this.K); } catch (e) { return false; } },
+  db() { return new Promise((res, rej) => { const r = indexedDB.open('paisa-bio', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async kv(mode, fn) { const db = await this.db(); return new Promise((res, rej) => { const t = db.transaction('k', mode), q = fn(t.objectStore('k')); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); },
+  b64(b) { return btoa(String.fromCharCode(...new Uint8Array(b))); },
+  unb64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); },
+  async available() { try { return this.supported() && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch (e) { return false; } },
+  async enable(pw) {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { name: 'Paisa' },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'paisa', displayName: 'Paisa' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' }, timeout: 60000 } });
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(pw));
+    await this.kv('readwrite', st => st.put(key, 'key'));
+    localStorage.setItem(this.K, JSON.stringify({ id: this.b64(cred.rawId), iv: this.b64(iv), ct: this.b64(ct) }));
+  },
+  async disable() { localStorage.removeItem(this.K); try { await this.kv('readwrite', st => st.delete('key')); } catch (e) {} },
+  async getPassword() {
+    const m = JSON.parse(localStorage.getItem(this.K));
+    await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), userVerification: 'required', timeout: 60000,
+      allowCredentials: [{ type: 'public-key', id: this.unb64(m.id), transports: ['internal'] }] } });
+    const key = await this.kv('readonly', st => st.get('key'));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: this.unb64(m.iv) }, key, this.unb64(m.ct));
+    return new TextDecoder().decode(pt);
+  }
+};
+let lastPw = '';
+async function refreshBio() { $('#bioBtn').hidden = !(Bio.enabled() && Bio.supported()); }
+$('#bioBtn').addEventListener('click', async () => {
+  const err = $('#lockErr');
+  try { const pw = await Bio.getPassword(); $('#pwInput').value = pw; $('#lockForm').requestSubmit(); }
+  catch (e) { if (e && e.name !== 'NotAllowedError') { err.textContent = 'Fingerprint unlock failed. Use your password.'; } }
+});
+ACTIONS['bio-toggle'] = async () => {
+  if (Bio.enabled()) { await Bio.disable(); toast('Fingerprint unlock turned off'); closeSheet(); return; }
+  if (!(await Bio.available())) { toast('Fingerprint unlock needs HTTPS and a screen lock/fingerprint set on this device'); return; }
+  if (!lastPw) { toast('Lock the app and log in with your password once, then enable this'); return; }
+  try { await Bio.enable(lastPw); toast('Fingerprint unlock enabled ✓'); closeSheet(); }
+  catch (e) { toast('Could not enable fingerprint unlock'); }
+};
+refreshBio();
+
 /* ---------- lock screen & auto-lock ---------- */
 function lockHint() {
   const p = CONFIG.MODE === 'sheets' && Vault.meta();
@@ -1223,6 +1274,7 @@ function lockHint() {
     : p ? `☁️ ${p.n || 'Some'} unsynced change${p.n === 1 ? '' : 's'} saved on this device — they'll sync after you unlock` : '🔒 Secured by Google Apps Script';
 }
 lockHint();
+setTimeout(() => { if (Bio.enabled() && Bio.supported()) $('#bioBtn').click(); }, 500);
 $('#pwEye').addEventListener('click', () => { const i = $('#pwInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
 $('#lockForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -1231,6 +1283,7 @@ $('#lockForm').addEventListener('submit', async e => {
   err.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Unlocking…';
   try {
     await Store.unlock(pw);
+    lastPw = pw;
     $('#pwInput').value = ''; $('#pwInput').blur();
     S.month = curYM(); $('#app').hidden = false; $('#lock').classList.add('out');
     lastActive = Date.now(); setTab('home'); setSync();
@@ -1243,12 +1296,12 @@ $('#lockForm').addEventListener('submit', async e => {
 });
 function lockApp(msg) {
   const pending = CONFIG.MODE === 'sheets' ? Sync.n : 0;
-  closeSheet(); Store.lock();
+  closeSheet(); Store.lock(); lastPw = ''; refreshBio();
   $$('main .view').forEach(v => v.innerHTML = '');
   $('#app').hidden = true; $('#lock').classList.remove('out');
   $('#lockErr').textContent = (msg || '') + (pending ? `${msg ? ' · ' : ''}${pending} unsynced change${pending === 1 ? ' is' : 's are'} kept on this device.` : '');
   setTimeout(lockHint, 400);
-  setTimeout(() => $('#pwInput').focus(), 300);
+  setTimeout(() => { if (Bio.enabled()) $('#bioBtn').click(); else $('#pwInput').focus(); }, 300);
 }
 ACTIONS['lock'] = () => lockApp();
 let lastActive = Date.now(), hiddenAt = 0;
@@ -1959,7 +2012,8 @@ ACTIONS['settings'] = () => {
       <button class="set-item danger" data-action="wipe"><span class="ic">🗑️</span><span class="t">Erase all data</span>›</button>
     </div>
     <div class="sec-title">Security</div>
-    <div class="set-group"><button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now<small>Auto-locks after ${CONFIG.AUTO_LOCK_MIN} min idle</small></span>›</button></div>
+    <div class="set-group"><button class="set-item" data-action="bio-toggle"><span class="ic">👆</span><span class="t">Fingerprint unlock<small>${Bio.enabled() ? 'On — tap to turn off' : 'Use fingerprint / face instead of typing the password'}</small></span>›</button>
+      <button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now<small>Auto-locks after ${CONFIG.AUTO_LOCK_MIN} min idle</small></span>›</button></div>
     <p class="xs faint" style="text-align:center;margin-top:18px">Paisa v1 · ${CONFIG.MODE === 'local' ? 'Local demo mode (this browser only)' : 'Synced with Google Sheets'} · ${D.txns.length} transactions</p>`,
   body => {
     $$('#stTheme button', body).forEach(b => b.onclick = () => { $$('#stTheme button', body).forEach(x => x.classList.toggle('on', x === b)); setTheme(b.dataset.v); });
