@@ -489,6 +489,8 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
 const CONFIG = {
   APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyEPjMzkWgceJ-69cdL4zgc8lvfFITcUGoKYctkF_-QP-wJCPWbhCgO5ZsRYaldDxPt/exec', // Google Sheets backend. Empty = local demo mode.
   DEMO_PASSWORD: '1234',    // Only used in local demo mode
+  // Firebase Web App config + Web Push key (see SETUP.md → Push notifications). Leave apiKey empty to hide the feature.
+  FIREBASE: { apiKey: 'AIzaSyBi5B9mDhz2bKkxdx0J-Q5BwwoDgLQ_d1A', authDomain: 'paisa-a2845.firebaseapp.com', projectId: 'paisa-a2845', storageBucket: 'paisa-a2845.firebasestorage.app', messagingSenderId: '374937278543', appId: '1:374937278543:web:e9ad71a0323e73a839b23a', vapidKey: 'BIMT_b2Bpzl1NzTmC6WOBxbnyZbGudsg_b1_g45hAt7jWZxWOfuV5bBEdTosgYhDiQF-ylzfOwpL1w8fYCYq21M' },
   AUTO_LOCK_MIN: 10,        // Auto-lock after inactivity / app in background
   SYNC_RETRY_SEC: 15,       // Retry interval when the Google Sheet can't be reached
   get MODE() { return this.APPS_SCRIPT_URL ? 'sheets' : 'local'; },
@@ -688,7 +690,7 @@ const Store = {
     const session = Sync.session, sentN = Sync.n, snap = JSON.stringify(D);
     Sync.inflight = true; Sync.dirty = false; setSync('saving');
     try {
-      const r = await api('save', { data: D, baseRev: this.rev }); // request body is serialised synchronously
+      const r = await api('save', { data: D, baseRev: this.rev, deviceId: Push.id(), deviceName: Push.name() }); // request body is serialised synchronously
       if (session !== Sync.session) { if (!D && Sync.pendingAtLock === sentN) Vault.clear(); return; } // finished after locking
       this.rev = r.rev; this.base = JSON.parse(snap); Sync.n = Math.max(0, Sync.n - sentN); Sync.lastOk = Date.now(); Sync.err = '';
       if (Sync.dirty || Sync.n) { Sync.dirty = true; this.persistNow(); setSync('saving'); Sync.timer = setTimeout(() => this.flush(), 300); }
@@ -1217,6 +1219,60 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); $('#dialog').classList.remove('open'); } });
 
+
+/* ---------- push notifications (Firebase Cloud Messaging) ---------- */
+const Push = {
+  K: 'paisa.push.v1',
+  configured: () => !!(CONFIG.FIREBASE.apiKey && CONFIG.FIREBASE.vapidKey && CONFIG.MODE === 'sheets'),
+  st() { try { return JSON.parse(localStorage.getItem(this.K)) || {}; } catch (e) { return {}; } },
+  set(o) { localStorage.setItem(this.K, JSON.stringify(Object.assign(this.st(), o))); },
+  enabled() { return !!this.st().on; },
+  id() { let i = this.st().id; if (!i) { i = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); this.set({ id: i }); } return i; },
+  name() { return this.st().name || ''; },
+  supported: () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext,
+  load(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load Firebase')); document.head.appendChild(s); }); },
+  async messaging() {
+    if (!window.firebase) {
+      await this.load('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+      await this.load('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+    }
+    const { vapidKey, ...cfg } = CONFIG.FIREBASE;
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    return firebase.messaging();
+  },
+  async enable(name) {
+    if (await Notification.requestPermission() !== 'granted') throw new Error('Notification permission was not allowed');
+    const reg = await navigator.serviceWorker.ready;
+    const token = await (await this.messaging()).getToken({ vapidKey: CONFIG.FIREBASE.vapidKey, serviceWorkerRegistration: reg });
+    if (!token) throw new Error('Could not get a notification token');
+    const r = await api('registerDevice', { deviceId: this.id(), deviceName: name, token });
+    this.set({ on: true, name, token });
+    return r;
+  },
+  async disable() {
+    try { await api('unregisterDevice', { deviceId: this.id() }); } catch (e) { throw new Error('Could not reach Google Sheet to turn this off. Try again when online.'); }
+    try { await (await this.messaging()).deleteToken(); } catch (e) {}
+    this.set({ on: false, token: '' });
+  },
+};
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  const m = ev.data && ev.data.paisaPush; if (!m || !D) return;
+  toast(m.title + (m.body ? ' — ' + m.body : ''), 'Refresh', () => ACTIONS['sheet-reload']());
+});
+ACTIONS['push-toggle'] = async () => {
+  if (Push.enabled()) {
+    try { await Push.disable(); toast('Notifications turned off on this device'); closeSheet(); } catch (e) { toast(e.message); }
+    return;
+  }
+  if (!Push.supported()) { toast('Notifications need HTTPS. On iPhone, add the app to the Home Screen first.'); return; }
+  const name = (prompt('Your name (shown to others, e.g. "Rahul")', Push.name()) || '').trim();
+  if (!name) return;
+  try {
+    const r = await Push.enable(name);
+    toast(r.configured ? 'Notifications enabled ✓' : 'Enabled on this device, but the Sheet has no Firebase key yet (see SETUP.md)');
+    closeSheet();
+  } catch (e) { toast(e.message || 'Could not enable notifications'); }
+};
 
 /* ---------- fingerprint unlock (WebAuthn gate + on-device encrypted password) ---------- */
 const Bio = {
@@ -2013,6 +2069,7 @@ ACTIONS['settings'] = () => {
     </div>
     <div class="sec-title">Security</div>
     <div class="set-group"><button class="set-item" data-action="bio-toggle"><span class="ic">👆</span><span class="t">Fingerprint unlock<small>${Bio.enabled() ? 'On — tap to turn off' : 'Use fingerprint / face instead of typing the password'}</small></span>›</button>
+      ${Push.configured() ? `<button class="set-item" data-action="push-toggle"><span class="ic">🔔</span><span class="t">Notifications<small>${Push.enabled() ? 'On for ' + esc(Push.name()) + ' — tap to turn off' : 'Get alerted when someone else adds a transaction'}</small></span>›</button>` : ''}
       <button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now<small>Auto-locks after ${CONFIG.AUTO_LOCK_MIN} min idle</small></span>›</button></div>
     <p class="xs faint" style="text-align:center;margin-top:18px">Paisa v1 · ${CONFIG.MODE === 'local' ? 'Local demo mode (this browser only)' : 'Synced with Google Sheets'} · ${D.txns.length} transactions</p>`,
   body => {
