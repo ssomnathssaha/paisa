@@ -2,7 +2,7 @@
 // - index.html: network-first (you always get the latest version when online), cached copy when offline.
 // - icons/manifest: cache-first.
 // - Everything else (Google Apps Script sync, fonts, POST requests) is never touched.
-const CACHE = 'paisa-v3';
+const CACHE = 'paisa-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -36,13 +36,16 @@ self.addEventListener('push', e => {
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
     const vis = cs.find(c => c.visibilityState === 'visible');
     if (vis) { cs.forEach(c => c.postMessage({ paisaPush: { title, body } })); return; }
-    return self.registration.showNotification(title, { body, icon: './icon-192.png', badge: './icon-192.png', tag: d.tag || 'paisa-txn', renotify: true, data: { url: './' } });
+    return self.registration.showNotification(title, { body, icon: './icon-192.png', badge: './icon-192.png', tag: d.tag || 'paisa-txn', renotify: true, data: { url: d.url || './' } });
   }));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
-    const c = cs[0]; return c ? c.focus() : self.clients.openWindow('./');
+    const c = cs[0];
+    if (c) { c.postMessage({ paisaOpen: url }); return c.focus(); }
+    return self.clients.openWindow(url);
   }));
 });

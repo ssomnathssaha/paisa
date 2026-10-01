@@ -787,6 +787,7 @@ function migrate(d) {
   d.version = 1; d.txns = d.txns || []; d.categories = d.categories || defaultCategories();
   d.accounts = d.accounts || []; d.snapshots = d.snapshots || []; d.emis = d.emis || []; d.recurring = d.recurring || [];
   d.settings = Object.assign({ budget: 90000, efTarget: 6 }, d.settings || {});
+  d.settings.reminders = Object.assign({ due: 2, dueHour: 9, daily: true, dailyHour: 21 }, d.settings.reminders || {});
   // Credit cards become live: opening dues = latest manually entered value, tracked from today.
   d.accounts.forEach(a => {
     if (a.kind !== 'liability' || a.group !== 'Credit Card' || a.openingDate) return;
@@ -1274,6 +1275,15 @@ ACTIONS['push-toggle'] = async () => {
   } catch (e) { toast(e.message || 'Could not enable notifications'); }
 };
 
+/* ---------- quick-add intent (home-screen shortcuts & reminder taps open the add form) ---------- */
+let intent = new URLSearchParams(location.search).get('add');
+if (intent) history.replaceState(null, '', location.pathname);
+function runIntent() { const k = intent; intent = null; if (D && (k === 'expense' || k === 'income')) setTimeout(() => openTxForm(null, { type: k }), 350); }
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  const u = ev.data && ev.data.paisaOpen; if (!u) return;
+  intent = new URL(u, location.href).searchParams.get('add'); if (D) runIntent();
+});
+
 /* ---------- fingerprint unlock (WebAuthn gate + on-device encrypted password) ---------- */
 const Bio = {
   K: 'paisa.bio.v1',
@@ -1344,6 +1354,7 @@ $('#lockForm').addEventListener('submit', async e => {
     S.month = curYM(); $('#app').hidden = false; $('#lock').classList.add('out');
     lastActive = Date.now(); setTab('home'); setSync();
     if (Store.notice) { toast(Store.notice, 'OK', () => {}); Store.notice = ''; }
+    if (intent) runIntent();
   } catch (ex) {
     err.textContent = ex.message || 'Unable to unlock';
     const c = $('#pwField'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
@@ -2046,6 +2057,7 @@ function payCardForm(cardId, t) {
 ACTIONS['pay-card'] = el => payCardForm(el.dataset.id);
 
 /* ================= SETTINGS ================= */
+const hourOpts = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${+sel === h ? ' selected' : ''}>${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}</option>`).join('');
 ACTIONS['settings'] = () => {
   const th = document.documentElement.dataset.theme;
   openSheet('Settings', `
@@ -2056,6 +2068,13 @@ ACTIONS['settings'] = () => {
       <div class="set-item"><span class="ic">🛟</span><span class="t">Emergency fund<small>Target months of expenses</small></span><input class="inp" id="stEf" inputmode="numeric" value="${D.settings.efTarget}"></div>
       <button class="set-item" data-action="cat-manage"><span class="ic">🏷️</span><span class="t">Manage categories<small>${D.categories.expense.length} expense · ${D.categories.income.length} income</small></span>›</button>
     </div>
+    ${CONFIG.MODE === 'sheets' ? `<div class="sec-title">Reminders<span class="xs faint" style="font-weight:400;text-transform:none;letter-spacing:0"> · sent as notifications to every device with Notifications on</span></div>
+    <div class="set-group">
+      <div class="set-item"><span class="ic">📅</span><span class="t">Due reminders<small>EMIs, recurring bills, card dues</small></span><select class="inp" id="rmDue" style="width:auto">${[[0, 'Off'], [1, 'On due day'], [2, '1 day before'], [3, '2 days before'], [4, '3 days before']].map(([v, l]) => `<option value="${v}"${+D.settings.reminders.due === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="set-item"><span class="ic">⏰</span><span class="t">Due reminder time</span><select class="inp" id="rmDueH" style="width:auto">${hourOpts(D.settings.reminders.dueHour)}</select></div>
+      <div class="set-item"><span class="ic">📝</span><span class="t">Daily "add expenses" nudge<small>Only if nothing is logged today</small></span><select class="inp" id="rmDaily" style="width:auto"><option value="1"${D.settings.reminders.daily ? ' selected' : ''}>On</option><option value="0"${D.settings.reminders.daily ? '' : ' selected'}>Off</option></select></div>
+      <div class="set-item"><span class="ic">🌙</span><span class="t">Nudge time</span><select class="inp" id="rmDailyH" style="width:auto">${hourOpts(D.settings.reminders.dailyHour)}</select></div>
+    </div>` : ''}
     <div class="sec-title">Data</div>
     <div class="set-group">
       <button class="set-item" data-action="export-json"><span class="ic">💾</span><span class="t">Backup (JSON)<small>Everything — transactions, net worth, settings</small></span>›</button>
@@ -2077,7 +2096,13 @@ ACTIONS['settings'] = () => {
   }, () => {
     const b = $('#stBudget'), e = $('#stEf'); if (!b || !D) return;
     const nb = parseAmt(b.value), ne = clamp(Math.round(parseAmt(e.value)) || 6, 1, 24);
-    if (nb !== D.settings.budget || ne !== D.settings.efTarget) { D.settings.budget = nb; D.settings.efTarget = ne; Store.save(); render(); }
+    let dirty = false;
+    if (nb !== D.settings.budget || ne !== D.settings.efTarget) { D.settings.budget = nb; D.settings.efTarget = ne; dirty = true; }
+    if ($('#rmDue')) {
+      const r = { due: +$('#rmDue').value, dueHour: +$('#rmDueH').value, daily: $('#rmDaily').value === '1', dailyHour: +$('#rmDailyH').value };
+      if (JSON.stringify(r) !== JSON.stringify(D.settings.reminders)) { D.settings.reminders = r; dirty = true; }
+    }
+    if (dirty) { Store.save(); render(); }
   });
 };
 ACTIONS['cat-manage'] = () => {
