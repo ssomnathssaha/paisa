@@ -2,7 +2,7 @@
 // - index.html: network-first (you always get the latest version when online), cached copy when offline.
 // - icons/manifest: cache-first.
 // - Everything else (Google Apps Script sync, fonts, POST requests) is never touched.
-const CACHE = 'paisa-v1';
+const CACHE = 'paisa-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -26,4 +26,23 @@ self.addEventListener('fetch', e => {
     return;
   }
   e.respondWith(caches.match(req).then(hit => hit || fetch(req)));
+});
+
+// Push (Firebase Cloud Messaging, data-only messages). Shows a notification, or tells the open page to show a toast.
+self.addEventListener('push', e => {
+  let p = {}; try { p = e.data ? e.data.json() : {}; } catch (x) {}
+  const d = p.data || p.notification || p;
+  const title = d.title || 'Paisa', body = d.body || '';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    const vis = cs.find(c => c.visibilityState === 'visible');
+    if (vis) { cs.forEach(c => c.postMessage({ paisaPush: { title, body } })); return; }
+    return self.registration.showNotification(title, { body, icon: './icon-192.png', badge: './icon-192.png', tag: d.tag || 'paisa-txn', renotify: true, data: { url: './' } });
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    const c = cs[0]; return c ? c.focus() : self.clients.openWindow('./');
+  }));
 });
