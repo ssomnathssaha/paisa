@@ -101,6 +101,13 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 .tb-row .icon-btn{width:34px;height:34px;border-radius:11px}
 .sync{flex:none;cursor:pointer;font-weight:700;font-size:11.5px;height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:99px;white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
 .sync.saved{color:var(--income);background:rgba(34,197,94,.12)} .sync.saving{color:var(--muted);background:var(--surface-2)} .sync.error{color:var(--expense);background:rgba(244,63,94,.12)}
+.rv-banner{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;margin:0 0 14px;border-radius:16px;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--text);text-align:left;font:inherit;cursor:pointer}
+.rv-banner .e{font-size:22px}.rv-banner .t{flex:1;min-width:0;display:flex;flex-direction:column}.rv-banner small{color:var(--muted);font-size:12px}.rv-banner .go{color:var(--accent);font-weight:700;font-size:13px;white-space:nowrap}
+.rv-item{padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:10px}
+.rv-top{display:flex;align-items:center;gap:10px}.rv-ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--surface-2);flex:none}
+.rv-mid{flex:1;min-width:0;display:flex;flex-direction:column}.rv-mid b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rv-mid small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-amt{font-weight:800;white-space:nowrap}.rv-dup{font-size:12px;color:var(--warn);margin-top:8px}
+.rv-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.rv-acts .btn{padding:9px;min-height:0}
 .hl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin:0 0 14px}
 .hl{display:flex;align-items:center;gap:8px;padding:10px;border-radius:14px;background:var(--surface);border:1px solid var(--border);text-align:left;min-width:0}
 .hl .e{font-size:18px;flex:none}
@@ -648,7 +655,7 @@ const Store = {
       await sleep(700); // simulate network latency
       if (pw !== CONFIG.DEMO_PASSWORD) throw new Error('Incorrect password. Please try again.');
       let raw = null; try { raw = JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { /* ignore corrupt data */ }
-      D = migrate(raw || seed()); this.pw = pw; this.save(); return;
+      D = migrate(raw || seed()); this.pw = pw; this.save(); Inbox.items = Inbox.demo(); return;
     }
     let res = null, netErr = null, pend = null;
     try { res = await api('load', {}, pw); } catch (e) { if (e.code) throw e; netErr = e; }
@@ -746,7 +753,7 @@ const Store = {
   lock() {
     if (CONFIG.MODE === 'sheets' && D && Sync.n) { this.persistNow(); Sync.pendingAtLock = Sync.n; this.flush(); }
     Sync.session++; Sync.inflight = false; clearTimeout(Sync.timer); clearTimeout(Sync.ptimer);
-    D = null; this.pw = null; this.rev = null; this.base = null; Vault.lock(); setSync();
+    D = null; this.pw = null; this.rev = null; this.base = null; Vault.lock(); setSync(); Inbox.items = [];
   },
 };
 
@@ -761,6 +768,7 @@ async function api(action, payload = {}, pw = Store.pw) {
   } catch (e) { throw new Error('Could not reach Google Sheet. Check your internet connection.'); }
   finally { clearTimeout(to); }
   if (!j.ok) { const e = new Error(j.error || 'Request failed'); e.code = j.code || 'ERROR'; throw e; }
+  if (action === 'load' && j.inbox) Inbox.setFromServer(j.inbox);
   return j;
 }
 
@@ -1265,6 +1273,7 @@ const Push = {
 };
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
   const m = ev.data && ev.data.paisaPush; if (!m || !D) return;
+  if (m.tag === 'paisa-bank') { Inbox.refresh().then(() => { render(); toast(m.title, 'Review', () => ACTIONS['review']()); }); return; }
   toast(m.title + (m.body ? ' — ' + m.body : ''), 'Refresh', () => ACTIONS['sheet-reload']());
 });
 ACTIONS['push-toggle'] = async () => {
@@ -1283,12 +1292,17 @@ ACTIONS['push-toggle'] = async () => {
 };
 
 /* ---------- quick-add intent (home-screen shortcuts & reminder taps open the add form) ---------- */
-let intent = new URLSearchParams(location.search).get('add');
+const intentOf = sp => sp.get('add') || (sp.has('review') ? 'review' : null);
+let intent = intentOf(new URLSearchParams(location.search));
 if (intent) history.replaceState(null, '', location.pathname);
-function runIntent() { const k = intent; intent = null; if (D && (k === 'expense' || k === 'income')) setTimeout(() => openTxForm(null, { type: k }), 350); }
+function runIntent() {
+  const k = intent; intent = null; if (!D) return;
+  if (k === 'expense' || k === 'income') setTimeout(() => openTxForm(null, { type: k }), 350);
+  else if (k === 'review') setTimeout(() => ACTIONS['review'](), 350);
+}
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
   const u = ev.data && ev.data.paisaOpen; if (!u) return;
-  intent = new URL(u, location.href).searchParams.get('add'); if (D) runIntent();
+  intent = intentOf(new URL(u, location.href).searchParams); if (D) runIntent();
 });
 
 /* ---------- fingerprint unlock (WebAuthn gate + on-device encrypted password) ---------- */
@@ -1383,6 +1397,7 @@ let lastActive = Date.now(), hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) hiddenAt = Date.now();
   else if (D && hiddenAt && Date.now() - hiddenAt > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒');
+  else if (D && Date.now() - Inbox.at > 5 * 60e3) Inbox.refresh().then(n => { if (n && D && ['home', 'txns'].includes(S.tab) && !$('#sheetWrap').classList.contains('open')) render(); });
 });
 setInterval(() => { if (D && Date.now() - lastActive > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒'); }, 30e3);
 </script>
@@ -1471,7 +1486,7 @@ function renderHome(el) {
   if (inc) ins.push(['🎯', `Savings rate is <b>${rate.toFixed(0)}%</b>. ${rate >= 30 ? 'Excellent — keep it up!' : rate >= 20 ? 'Healthy — aim for 30%.' : 'Aim for 20%+ to build wealth.'}`]);
   const schedExp = isCur ? expOf(txOfMonth(m, true).filter(isFuture)) : 0;
   if (schedExp) ins.unshift(['⏳', `<b>${fmt(schedExp)}</b> more is scheduled later this month${budget ? ` — <b>${fmt(budget - exp - schedExp)}</b> of budget left after that` : ''}.`]);
-  h += homeLinks(m, cats, exp);
+  h = reviewBanner() + h + homeLinks(m, cats, exp);
   if (ins.length) h += `<div class="ins-row">${ins.map(([e, p]) => `<div class="ins"><span class="e">${e}</span><p>${p}</p></div>`).join('')}</div>`;
 
   // sections (assembled in display order at the end; each one collapsible)
@@ -1647,6 +1662,7 @@ function renderTxns(el) {
       </div>
       ${tags.length ? `<div class="chips">${active ? '<button class="chip" data-action="tx-clear">✕ Clear</button>' : ''}${tags.map(g => `<button class="chip${f.tag === g ? ' on' : ''}" data-action="tx-tag" data-v="${esc(g)}">#${esc(g)}</button>`).join('')}</div>` : ''}
     </div>
+    ${reviewBanner()}
     ${S.txScope === 'month' && S.month <= curYM() ? secWrap('calendar', calendarCard(S.month)) : ''}
     <div id="txListWrap"></div>`;
   $('#txQ').addEventListener('input', e => { f.q = e.target.value; renderTxList(); });
@@ -1690,7 +1706,7 @@ ACTIONS['tx-clear'] = () => { S.f = { q: '', type: 'all', cat: '', method: '', t
 let lastMethod = 'UPI';
 function openTxForm(tx, preset = {}) {
   const editing = !!tx;
-  const fs = tx ? { ...tx, tags: [...(tx.tags || [])] } : { type: preset.type || 'expense', amount: '', category: '', date: preset.date || (S.month === curYM() ? today() : `${S.month}-01`), method: lastMethod, note: '', tags: [] };
+  const fs = tx ? { ...tx, tags: [...(tx.tags || [])] } : { type: preset.type || 'expense', amount: preset.amount || '', category: preset.category || '', date: preset.date || (S.month === curYM() ? today() : `${S.month}-01`), method: preset.method || lastMethod, note: preset.note || '', tags: [...(preset.tags || [])], cardId: preset.cardId || '' };
   const ytd = dstr(new Date(Date.now() - 864e5)), tmr = dstr(new Date(Date.now() + 864e5));
   const html = `
     <div class="seg type" id="fType">${['expense', 'income'].map(v => `<button type="button" data-v="${v}" class="${fs.type === v ? 'on' : ''}">${v === 'expense' ? '− Expense' : '+ Income'}</button>`).join('')}</div>
@@ -1710,7 +1726,7 @@ function openTxForm(tx, preset = {}) {
       ${editing ? '<button type="button" class="btn danger-ghost" id="fDel" aria-label="Delete"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>' : ''}
       <button type="button" class="btn t-${fs.type}" id="fSave">${editing ? 'Save changes' : 'Add ' + fs.type}</button>
     </div>`;
-  openSheet(editing ? 'Edit transaction' : 'New transaction', html, body => {
+  openSheet(editing ? 'Edit transaction' : preset.title || 'New transaction', html, body => {
     const amt = $('#fAmt', body), hint = $('#fAmtHint', body), save = $('#fSave', body);
     const drawCats = () => {
       $('#fCats', body).innerHTML = D.categories[fs.type].map(c => `<button type="button" class="cat-btn${fs.category === c.name ? ' on' : ''}" style="--c:${c.color}" data-c="${esc(c.name)}"><span class="e" style="background:${hexA(c.color, .16)}">${c.icon}</span>${esc(c.name)}</button>`).join('');
@@ -1769,6 +1785,7 @@ function openTxForm(tx, preset = {}) {
       lastMethod = rec.method;
       if (rec.method === 'Card' && fs.cardId && accById(fs.cardId) && !serverOutdated()) { rec.cardId = fs.cardId; lastCardId = fs.cardId; } else delete rec.cardId;
       if (editing) D.txns[D.txns.findIndex(t => t.id === tx.id)] = rec; else D.txns.push(rec);
+      if (preset.onSave) preset.onSave(rec);
       const rep = $('#fRepeat', body);
       if (rep && rep.checked) {
         const r = { id: 'rc' + uid(), type: rec.type, name: rec.note || rec.category, icon: cat(rec.type, rec.category).icon, amount: a, category: rec.category, dueDay: +date.slice(8), method: rec.method, tags: rec.tags, active: true, since: date.slice(0, 7) };
@@ -1786,11 +1803,117 @@ function openTxForm(tx, preset = {}) {
       toast('Transaction deleted', 'Undo', () => { D.txns.splice(idx, 0, removed); Store.save(); render(); });
     };
     drawCats(); drawTags();
-    if (!editing) setTimeout(() => amt.focus(), 380);
+    if (!editing && !fs.amount) setTimeout(() => amt.focus(), 380);
   });
 }
 ACTIONS['add'] = el => openTxForm(null, { date: el.dataset.date });
 ACTIONS['edit-tx'] = el => { const t = D.txns.find(x => x.id === el.dataset.id); if (t) t.type === 'transfer' ? payCardForm(null, t) : openTxForm(t); };
+
+/* ---------- bank email alerts → "To review" (parsed by Apps Script from Gmail; see SETUP.md) ---------- */
+const Inbox = {
+  K: 'paisa_inbox_marks', items: [], at: 0, busy: false,
+  marks() { try { return JSON.parse(localStorage.getItem(this.K)) || []; } catch (e) { return []; } },
+  setFromServer(list) {
+    const done = new Set(this.marks().map(m => m.id));
+    this.items = (list || []).filter(i => !done.has(i.id)); this.at = Date.now(); this.flush();
+  },
+  async refresh() { // returns how many items are waiting
+    if (CONFIG.MODE !== 'sheets' || !Store.pw) return this.items.length;
+    try { const r = await api('inbox'); if (D) this.setFromServer(r.inbox); } catch (e) { /* offline: keep what we have */ }
+    return this.items.length;
+  },
+  mark(id, status, txId) {
+    this.items = this.items.filter(i => i.id !== id);
+    if (CONFIG.MODE !== 'sheets') return;
+    localStorage.setItem(this.K, JSON.stringify([...this.marks(), { id, status, txId: txId || '' }]));
+    this.flush();
+  },
+  async flush() { // queued so a skipped/added alert never comes back, even if marking happens offline
+    if (this.busy || CONFIG.MODE !== 'sheets' || !Store.pw) return;
+    const m = this.marks(); if (!m.length) return;
+    this.busy = true;
+    try { await api('inboxMark', { marks: m }); const ids = new Set(m.map(x => x.id)); localStorage.setItem(this.K, JSON.stringify(this.marks().filter(x => !ids.has(x.id)))); }
+    catch (e) { /* retried on next load */ } finally { this.busy = false; }
+  },
+  demo() {
+    const d = n => dstr(new Date(Date.now() - n * 864e5));
+    return [
+      { id: 'demo1', date: d(0), type: 'expense', amount: 486, merchant: 'SWIGGY', bank: 'HDFC', acct: '1234', method: 'UPI', snippet: 'You have done a UPI txn' },
+      { id: 'demo2', date: d(0), type: 'expense', amount: 1249, merchant: 'AMAZON PAY INDIA', bank: 'ICICI', acct: '5678', method: 'Card', snippet: 'Transaction alert for your ICICI Bank Credit Card' },
+      { id: 'demo3', date: d(1), type: 'income', amount: 2500, merchant: 'ACME CORP', bank: 'SBI', acct: '9012', method: 'Bank Transfer', snippet: 'Credit alert' },
+    ];
+  },
+};
+const CAT_HINTS = {
+  expense: [[/swiggy|zomato|restaurant|cafe|domino|pizza|mcdonald|kfc|starbucks|burger|eatclub|chaayos|haldiram/i, 'Food & Dining'],
+    [/blinkit|zepto|bigbasket|instamart|dmart|grocer|jiomart|reliance fresh|nature.?s basket|more retail|milkbasket|country delight/i, 'Groceries'],
+    [/uber|\bola\b|rapido|metro|irctc|redbus|namma yatri|fastag|parking/i, 'Transport'], [/petrol|fuel|hpcl|bpcl|indian ?oil|iocl|\bshell\b/i, 'Fuel'],
+    [/netflix|spotify|hotstar|prime video|youtube|apple\.com|google play|jio ?cinema|sonyliv|zee5/i, 'Subscriptions'],
+    [/amazon|flipkart|myntra|ajio|meesho|nykaa|croma|reliance digital|tata ?cliq|decathlon|ikea/i, 'Shopping'],
+    [/bookmyshow|\bpvr\b|inox|cinema|district/i, 'Entertainment'],
+    [/airtel|\bjio\b|vodafone|\bvi\b|bescom|electricity|power|mahanagar gas|broadband|fibernet|billdesk|recharge|water|\bgas\b/i, 'Bills & Utilities'],
+    [/apollo|pharm|medplus|1mg|netmeds|hospital|clinic|diagnostic|practo|cult\.?fit/i, 'Health'],
+    [/makemytrip|goibibo|indigo|air ?india|vistara|akasa|cleartrip|ixigo|\boyo\b|airbnb|booking\.com|agoda/i, 'Travel'],
+    [/urban ?company|salon|spa\b/i, 'Personal Care'], [/school|college|udemy|coursera|byju|unacademy/i, 'Education']],
+  income: [[/salary|payroll|sal for/i, 'Salary'], [/interest|\bint\b/i, 'Interest'], [/refund|reversal|reversed|cashback/i, 'Refund'], [/dividend/i, 'Dividends'], [/rent/i, 'Rental']],
+};
+const learnKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function guessFor(it) {
+  const L = D.settings.learn || {}, has = n => D.categories[it.type].some(c => c.name === n);
+  let category = (L.m || {})[learnKey(it.merchant)];
+  if (!category || !has(category)) category = ((CAT_HINTS[it.type] || []).find(([re, n]) => re.test(it.merchant + ' ' + it.snippet) && has(n)) || [])[1] || '';
+  const method = METHODS.some(m => m[0] === it.method) ? it.method : '';
+  let cardId = '';
+  if (method === 'Card') {
+    const k = (L.c || {})[it.bank + '|' + it.acct], b = String(it.bank || '').toLowerCase().split(' ')[0];
+    cardId = (k && accById(k) ? k : '') || (b && (cards().find(c => c.name.toLowerCase().includes(b)) || {}).id) || '';
+  }
+  return { category, method, cardId };
+}
+const maybeDup = it => D.txns.some(t => t.type === it.type && Math.abs(t.amount - it.amount) < 1 && Math.abs(parseD(t.date) - parseD(it.date)) <= 864e5);
+function reviewBanner() {
+  const n = Inbox.items.length; if (!n) return '';
+  const tot = sum(Inbox.items.filter(i => i.type === 'expense'), i => i.amount);
+  return `<button class="rv-banner" data-action="review"><span class="e">🏦</span><span class="t"><b>${n} bank transaction${n === 1 ? '' : 's'} to review</b><small>From your email alerts${tot ? ` · ${fmt(tot)} spent` : ''}</small></span><span class="go">Review ›</span></button>`;
+}
+function reviewList(body) {
+  const items = Inbox.items;
+  if (!items.length) { body.innerHTML = emptyState('✅', 'All caught up', 'New bank alerts from your email show up here automatically.'); return; }
+  body.innerHTML = `<p class="xs muted" style="margin:0 0 10px">Found in your bank alert emails. <b>Add</b> opens a pre-filled form; <b>Skip</b> ignores it.</p>
+    ${items.map(it => { const inc = it.type === 'income', dup = maybeDup(it); return `<div class="rv-item">
+      <div class="rv-top"><span class="rv-ic ${inc ? 'pos' : 'neg'}">${inc ? '↓' : '↑'}</span>
+        <span class="rv-mid"><b>${esc(it.merchant || (inc ? 'Money received' : 'Payment'))}</b><small>${esc(it.bank || 'Bank')}${it.acct ? ' ••' + esc(it.acct) : ''} · ${methodIcon(it.method)} ${esc(it.method || '')} · ${shortDate(it.date)}</small></span>
+        <span class="rv-amt ${inc ? 'pos' : 'neg'}">${inc ? '+' : '−'}${fmtX(it.amount)}</span></div>
+      ${dup ? '<div class="rv-dup">⚠️ A similar entry already exists — maybe added manually?</div>' : ''}
+      <div class="rv-acts"><button class="btn ghost" data-skip="${esc(it.id)}">Skip</button><button class="btn t-${it.type}" data-addrv="${esc(it.id)}">Add</button></div></div>`; }).join('')}
+    ${items.length > 1 ? '<button class="btn danger-ghost block" style="margin-top:6px" data-skipall>Skip all</button>' : ''}`;
+  body.querySelectorAll('[data-skip]').forEach(b => b.onclick = () => { Inbox.mark(b.dataset.skip, 'skipped'); reviewList(body); render(); });
+  body.querySelectorAll('[data-addrv]').forEach(b => b.onclick = () => reviewAdd(items.find(i => i.id === b.dataset.addrv)));
+  const all = body.querySelector('[data-skipall]');
+  if (all) all.onclick = async () => {
+    if (!await confirmDlg('Skip all?', `${items.length} bank alerts will be ignored.`, 'Skip all')) return;
+    [...items].forEach(i => Inbox.mark(i.id, 'skipped')); reviewList(body); render();
+  };
+}
+function reviewAdd(it) {
+  if (!it) return;
+  const g = guessFor(it);
+  openTxForm(null, {
+    title: 'Review bank transaction', type: it.type, amount: it.amount, date: it.date, note: it.merchant, category: g.category, method: g.method, cardId: g.cardId,
+    onSave: rec => {
+      const L = D.settings.learn = D.settings.learn || {}; L.m = L.m || {}; L.c = L.c || {};
+      if (learnKey(it.merchant)) { delete L.m[learnKey(it.merchant)]; L.m[learnKey(it.merchant)] = rec.category; }
+      const keys = Object.keys(L.m); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(k => delete L.m[k]);
+      if (rec.cardId && it.bank) L.c[it.bank + '|' + it.acct] = rec.cardId;
+      Inbox.mark(it.id, 'added', rec.id);
+      if (Inbox.items.length) setTimeout(() => ACTIONS['review'](), 450);
+    },
+  });
+}
+ACTIONS['review'] = () => {
+  openSheet('To review', '', body => reviewList(body));
+  Inbox.refresh().then(() => { const b = $('#sheetBody'); if ($('#sheetTitle').textContent === 'To review' && $('#sheetWrap').classList.contains('open')) reviewList(b); render(); });
+};
 
 /* ================= INSIGHTS DASHBOARD ================= */
 const FIXED = ['Rent', 'EMI', 'Bills & Utilities', 'Subscriptions'];
