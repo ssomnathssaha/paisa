@@ -108,6 +108,37 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 .rv-mid{flex:1;min-width:0;display:flex;flex-direction:column}.rv-mid b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rv-mid small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rv-amt{font-weight:800;white-space:nowrap}.rv-dup{font-size:12px;color:var(--warn);margin-top:8px}
 .rv-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.rv-acts .btn{padding:9px;min-height:0}
+.sp-chart{margin-top:14px}
+.sp-chart svg{display:block;width:100%;height:60px}
+.sp-chart rect{fill:#fff;opacity:.45}.sp-chart rect.on{opacity:.8}.sp-chart rect.tdy{opacity:1;fill:#fde68a}.sp-chart rect.fut{opacity:.15}
+.sp-chart rect[data-action]{cursor:pointer}
+.sp-ax{display:flex;justify-content:space-between;font-size:10px;opacity:.7;margin-top:3px}
+.sp-strip{display:flex;height:8px;border-radius:99px;overflow:hidden;gap:1.5px;padding:1.5px;margin-top:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}
+.sp-strip i{display:block;min-width:4px;border-radius:99px}
+.sp-leg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:11.5px;opacity:.95}
+.sp-leg span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.sp-leg i{width:10px;height:10px;border-radius:50%;display:inline-block;border:2px solid #fff;flex:none}
+.sp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.sp-stats div{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:8px 10px;min-width:0}
+.sp-stats small{display:block;font-size:10.5px;opacity:.8}
+.sp-stats b{font-size:clamp(12.5px,3.8vw,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.qnav{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 6px;margin:0 0 14px;padding:12px 6px;border-radius:20px;background:var(--surface);border:1px solid var(--border)}
+.qn{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--text);background:none;border:0;padding:4px 0;min-width:0}
+.qi{position:relative;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:21px;background:var(--surface-2)}
+.qi em{position:absolute;top:-4px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f43f5e;color:#fff;font:700 10.5px/18px system-ui;font-style:normal}
+.qn:active .qi{transform:scale(.92)}
+.sumc{cursor:pointer}
+.sumc .card-h{margin-bottom:10px}
+.sumc-r{display:flex;align-items:center;gap:6px;flex:none}
+.chev{font-size:22px;line-height:1;opacity:.4}
+.sumc-f{font-size:12px;color:var(--muted);margin-top:10px}
+.sumc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)}
+.sumc-row:first-of-type{border-top:0}
+.sumc-row .n{font-weight:600;font-size:14px;min-width:0}
+.sumc-row .n small{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+.sumc-row .r{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.mini{display:block;width:64px;height:4px;border-radius:9px;background:var(--surface-2);overflow:hidden}
+.mini i{display:block;height:100%;background:var(--accent)}
 .hl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin:0 0 14px}
 .hl{display:flex;align-items:center;gap:8px;padding:10px;border-radius:14px;background:var(--surface);border:1px solid var(--border);text-align:left;min-width:0}
 .hl .e{font-size:18px;flex:none}
@@ -1434,46 +1465,138 @@ function catTotals(tx, type) {
 
 /* ================= HOME ================= */
 // Home section order (credit card dues near the bottom) + collapsible sections, remembered per device.
-const HOME_ORDER = ['budget', 'upcoming', 'recurring', 'emis'];
 const COLLAPSE_KEY = 'paisa_collapsed';
 const collapsed = (() => { try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || []); } catch (e) { return new Set(); } })();
+// sections collapsed until the user opens them (stored as '+key' once opened)
+const DEF_COLL = new Set(['bills']);
+const isColl = k => DEF_COLL.has(k) ? !collapsed.has('+' + k) : collapsed.has(k);
+function setColl(k, c) {
+  if (DEF_COLL.has(k)) { if (c) collapsed.delete('+' + k); else collapsed.add('+' + k); }
+  else if (c) collapsed.add(k); else collapsed.delete(k);
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+}
 function secWrap(key, html) {
   if (!html) return '';
   // the section's first header becomes the toggle (chevron added via CSS)
   const i = html.indexOf('<div class="card-h"');
   if (i >= 0) {
     const j = html.indexOf('>', i);
-    html = html.slice(0, i) + `<div class="card-h" data-action="toggle-sec" data-sec="${key}" role="button" aria-expanded="${!collapsed.has(key)}"` + html.slice(i + 19, j) + '>' + html.slice(j + 1);
+    html = html.slice(0, i) + `<div class="card-h" data-action="toggle-sec" data-sec="${key}" role="button" aria-expanded="${!isColl(key)}"` + html.slice(i + 19, j) + '>' + html.slice(j + 1);
   }
-  return `<section class="hsec${collapsed.has(key) ? ' collapsed' : ''}" data-sec="${key}">${html}</section>`;
+  return `<section class="hsec${isColl(key) ? ' collapsed' : ''}" data-sec="${key}">${html}</section>`;
 }
 ACTIONS['toggle-sec'] = el => {
   const k = el.dataset.sec, wrap = el.closest('.hsec'); if (!wrap) return;
   const on = !wrap.classList.toggle('collapsed'); el.setAttribute('aria-expanded', on);
-  if (on) collapsed.delete(k); else collapsed.add(k);
-  localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+  setColl(k, !on);
 };
 function renderHome(el) {
   if (S.month > curYM()) { el.innerHTML = renderFutureMonth(S.month); return; }
-  const m = S.month, tx = txOfMonth(m), pm = addMonths(m, -1), ptx = txOfMonth(pm);
-  const inc = incOf(tx), exp = expOf(tx), pinc = incOf(ptx), pexp = expOf(ptx), net = inc - exp;
-  const rate = inc ? net / inc * 100 : 0, isCur = m === curYM(), dim = daysInMonth(m);
-  const dayN = isCur ? new Date().getDate() : dim, daysLeft = isCur ? dim - dayN + 1 : 0;
-  const budget = +D.settings.budget || 0;
+  const m = S.month;
+  el.innerHTML = reviewBanner() + spendHero(m) + homeNav(m)
+    + emiSummary(m) + (m === curYM() ? cardSummary() : '') + budgetSummary(m)
+    + secWrap('bills', recurCard(m));
+}
 
-  // hero
-  let h = `<div class="hero">
-    <div class="hero-top"><span class="chip-glass">📅 ${mLabel(m, true)}</span><span class="chip-glass">${inc ? `Saved ${rate.toFixed(0)}%` : 'No income yet'}</span></div>
-    <div class="hero-label">Net balance this month</div>
-    <div class="hero-amt">${net < 0 ? '−' : ''}${fmt(Math.abs(net))}</div>
-    <div class="hero-delta">${pinc || pexp ? `${(net - (pinc - pexp)) >= 0 ? '▲' : '▼'} ${fmt(Math.abs(net - (pinc - pexp)))} vs ${MONTHS[+pm.slice(5) - 1]}` : '&nbsp;'}</div>
-    <div class="hero-split">
-      <div class="hs"><div class="hs-ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div><div><div class="hs-l">Income</div><div class="hs-v">${fmt(inc)}</div><div class="hs-d">${pinc ? pctTxt((inc - pinc) / pinc * 100, 0) + ' MoM' : '—'}</div></div></div>
-      <div class="hs"><div class="hs-ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg></div><div><div class="hs-l">Expenses</div><div class="hs-v">${fmt(exp)}</div><div class="hs-d">${pexp ? pctTxt((exp - pexp) / pexp * 100, 0) + ' MoM' : '—'}</div></div></div>
+/* Top card: total spent this month with daily bars + category split */
+function spendHero(m) {
+  const tx = txOfMonth(m), pm = addMonths(m, -1), ptx = txOfMonth(pm), isCur = m === curYM(), dim = daysInMonth(m);
+  const dayN = isCur ? new Date().getDate() : dim, exp = expOf(tx), inc = incOf(tx), net = inc - exp;
+  const same = expOf(ptx.filter(t => +t.date.slice(8) <= dayN)), d = same ? (exp - same) / same * 100 : null;
+  const daily = Array(dim).fill(0);
+  tx.forEach(t => { if (t.type === 'expense') daily[+t.date.slice(8) - 1] += t.amount; });
+  const mx = Math.max(...daily, 1), H = 60;
+  const bars = daily.map((v, i) => {
+    const day = i + 1, ds = `${m}-${pad(day)}`, fut = day > dayN, h = v ? Math.max(4, v / mx * (H - 2)) : 2;
+    return `<rect x="${i * 10 + 1.5}" y="${H - h}" width="7" height="${h}" rx="2" class="${fut ? 'fut' : isCur && day === dayN ? 'tdy' : v ? 'on' : ''}"${fut ? '' : ` data-action="day" data-d="${ds}" data-tip="${shortDate(ds)}: ${fmt(v)}"`}/>`;
+  }).join('');
+  const cats = catTotals(tx, 'expense'), top = cats.slice(0, 4), rest = exp - sum(top, c => c.value);
+  const segs = [...top.map(c => ({ ...c })), ...(rest > 0 ? [{ name: 'Others', value: rest, color: '#cbd5e1', icon: '•' }] : [])];
+  return `<div class="hero sp-hero">
+    <div class="hero-top"><span class="chip-glass">📅 ${mLabel(m, true)}</span><button class="chip-glass" data-action="go-insights">Insights ›</button></div>
+    <div class="hero-label">${isCur ? 'Spent this month' : `Spent in ${mLong(m)}`}</div>
+    <div class="hero-amt">${fmt(exp)}</div>
+    <div class="hero-delta">${d === null ? (isCur ? `Day ${dayN} of ${dim}` : '&nbsp;') : `${d <= 0 ? '▼' : '▲'} ${Math.abs(d).toFixed(0)}% ${d <= 0 ? 'less' : 'more'} than ${isCur ? 'this point in ' : ''}${MONTHS[+pm.slice(5) - 1]} (${fmtC(same)})`}</div>
+    <div class="sp-chart"><svg viewBox="0 0 ${dim * 10} ${H}" preserveAspectRatio="none" aria-label="Daily spending">${bars}</svg>
+      <div class="sp-ax"><span>1</span><span>${Math.ceil(dim / 2)}</span><span>${dim}</span></div></div>
+    ${exp ? `<div class="sp-strip" data-action="go-insights">${segs.map(c => `<i style="width:${c.value / exp * 100}%;background:${c.color}"></i>`).join('')}</div>
+    <div class="sp-leg">${segs.slice(0, 4).map(c => `<span><i style="background:${c.color}"></i>${c.icon} ${esc(c.name)} <b>${fmtC(c.value)}</b></span>`).join('')}</div>` : '<div class="sp-leg"><span>No expenses yet — tap ＋ to add one.</span></div>'}
+    <div class="sp-stats">
+      <div><small>Income</small><b>${fmtC(inc)}</b></div>
+      <div><small>${net >= 0 ? 'Saved' : 'Overspent'}</small><b>${fmtC(Math.abs(net))}</b></div>
+      <div><small>Avg / day</small><b>${fmtC(exp / dayN)}</b></div>
     </div></div>`;
+}
 
-  // insight cards
-  const cats = catTotals(tx, 'expense'), ins = [];
+/* Icon shortcuts to every section */
+function homeNav(m) {
+  const pendRec = m <= curYM() ? D.recurring.filter(r => recVisible(r, m) && ['due', 'due-today', 'overdue', 'missed'].includes(recState(r, m))).length : 0;
+  const pendEmi = D.emis.filter(e => { const i = monthDiff(e.start, m); return i >= 0 && i < e.tenure && emiState(e, m) !== 'paid'; }).length;
+  const nCards = serverOutdated() ? 0 : cards().filter(c => (cardDue(c) || 0) > 0).length;
+  const rv = typeof Inbox !== 'undefined' ? Inbox.items.filter(i => !i.status).length : 0;
+  const it = [
+    ['data-tab="txns"', '🧾', 'Activity', rv], ['data-action="go-calendar"', '📅', 'Calendar', 0],
+    ['data-action="go-insights"', '📊', 'Insights', 0], ['data-tab="worth"', '🏦', 'Net worth', 0],
+    ['data-action="emi-manage"', '📆', 'EMIs', pendEmi], ['data-action="go-cards"', '💳', 'Cards', nCards],
+    ['data-action="rec-manage"', '🔁', 'Bills', pendRec], ['data-action="settings"', '⚙️', 'Settings', 0],
+  ];
+  return `<nav class="qnav">${it.map(([a, e, l, n]) => `<button class="qn" ${a}><span class="qi">${e}${n ? `<em>${n}</em>` : ''}</span><span>${l}</span></button>`).join('')}</nav>`;
+}
+ACTIONS['go-cards'] = () => {
+  setTab('worth');
+  requestAnimationFrame(() => { const h = [...$$('#view-worth h3')].find(x => /Credit card/.test(x.textContent)); h && h.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+};
+ACTIONS['go-budget'] = () => { S.range = 'mo'; setColl('budget', false); setTab('dash'); };
+
+const sumCard = (act, title, sub, right, body) => `<div class="card sumc" data-action="${act}" role="button">
+  <div class="card-h"><div><h3>${title}</h3><div class="sub">${sub}</div></div><div class="sumc-r">${right}<span class="chev">›</span></div></div>${body}</div>`;
+
+function emiSummary(m) {
+  const active = D.emis.filter(e => emiPaid(e) < e.tenure);
+  const inM = D.emis.filter(e => { const i = monthDiff(e.start, m); return i >= 0 && i < e.tenure; });
+  if (!active.length && !inM.length) return '';
+  const st = e => emiState(e, m), due = sum(inM, e => e.amount), paid = sum(inM.filter(e => st(e) === 'paid'), e => e.amount);
+  const pend = inM.filter(e => st(e) !== 'paid').sort((a, b) => a.dueDay - b.dueDay), late = pend.filter(e => ['overdue', 'missed'].includes(st(e))).length;
+  const end = active.map(emiEnd).sort().pop(), next = pend[0];
+  const pill = late ? `<span class="pill over">${late} overdue</span>` : pend.length ? `<span class="pill warn">${pend.length} pending</span>` : inM.length ? '<span class="pill ok">✓ Paid</span>' : '';
+  return sumCard('emi-manage', '📆 EMIs running', `${active.length} active${end ? ` · debt-free by ${mLabel(end, true)}` : ''}`, pill, `
+    <div class="stats3" style="margin-top:0">
+      <div class="stat"><div class="l">This month</div><div class="v">${fmtC(due)}</div></div>
+      <div class="stat"><div class="l">Paid</div><div class="v pos">${fmtC(paid)}</div></div>
+      <div class="stat"><div class="l">Outstanding</div><div class="v">${fmtC(sum(active, emiLeft))}</div></div></div>
+    ${due ? `<div class="emi-prog" style="margin:10px 0 0"><i class="${paid >= due ? 'done' : ''}" style="width:${paid / due * 100}%"></i></div>` : ''}
+    ${next ? `<div class="sumc-f">Next: ${next.icon || '💳'} ${esc(next.name)} · ${fmt(next.amount)} on ${ordinal(next.dueDay)}</div>` : ''}`);
+}
+
+function cardSummary() {
+  if (serverOutdated()) return '';
+  const list = cards().map(c => ({ c, due: cardDue(c) || 0 })).filter(x => x.due > 0).sort((a, b) => b.due - a.due);
+  if (!list.length) return '';
+  const day = new Date().getDate();
+  return sumCard('go-cards', '💳 Credit cards', `${list.length} with outstanding balance`, `<b class="neg num">${fmtC(sum(list, x => x.due))}</b>`,
+    list.map(({ c, due }) => {
+      const lim = +c.limit || 0, u = lim ? due / lim * 100 : 0, dd = c.dueDay ? (c.dueDay - day + daysInMonth(curYM())) % daysInMonth(curYM()) : null;
+      return `<div class="sumc-row"><span class="n">${esc(c.name)}${c.dueDay ? `<small>bill due ${ordinal(c.dueDay)}${dd !== null && dd <= 5 ? ` · <b class="neg">${dd ? `in ${dd}d` : 'today'}</b>` : ''}</small>` : ''}</span>
+        <span class="r"><b class="num">${fmt(due)}</b>${lim ? `<i class="mini"><i style="width:${clamp(u, 0, 100)}%;${u > 70 ? 'background:#f43f5e' : ''}"></i></i>` : ''}</span></div>`;
+    }).join(''));
+}
+
+function budgetSummary(m) {
+  const budget = +D.settings.budget || 0;
+  if (!budget) return m === curYM() ? sumCard('settings', '🎯 Monthly budget', 'Set a spending limit to track your pace', '', '') : '';
+  const exp = expOf(txOfMonth(m)), isCur = m === curYM(), dim = daysInMonth(m), dayN = isCur ? new Date().getDate() : dim;
+  const pct = exp / budget * 100, pace = dayN / dim * 100, cls = exp > budget ? 'over' : isCur && pct > pace * 1.05 ? 'warn' : 'ok';
+  const left = budget - exp, safe = isCur ? Math.max(0, left) / (dim - dayN + 1) : 0;
+  return sumCard('go-budget', '🎯 Monthly budget', `${fmtC(exp)} of ${fmtC(budget)} · ${pct.toFixed(0)}% used`, `<span class="pill ${cls}">${{ over: 'Over budget', warn: 'Above pace', ok: 'On track' }[cls]}</span>`, `
+    <div class="progress" style="margin:4px 0 8px"><div class="bar ${cls === 'ok' ? '' : cls}" style="width:${clamp(pct, 0, 100)}%"></div>${isCur ? `<div class="pace-mark" style="left:${pace}%"></div>` : ''}</div>
+    <div class="sumc-f" style="margin-top:0;display:flex;justify-content:space-between"><span class="${left < 0 ? 'neg' : ''}">${left < 0 ? fmtC(-left) + ' over' : fmtC(left) + ' left'}</span>${isCur ? `<span>Safe to spend <b>${fmtC(safe)}</b>/day</span>` : ''}</div>`);
+}
+
+/* Insight tiles (Insights → Month) */
+function monthInsights(m) {
+  const tx = txOfMonth(m), pm = addMonths(m, -1), ptx = txOfMonth(pm), inc = incOf(tx), exp = expOf(tx);
+  const rate = inc ? (inc - exp) / inc * 100 : 0, isCur = m === curYM(), dayN = isCur ? new Date().getDate() : daysInMonth(m);
+  const budget = +D.settings.budget || 0, cats = catTotals(tx, 'expense'), ins = [];
   if (cats[0]) ins.push(['🏆', `<b>${esc(cats[0].name)}</b> is your top spend at <b>${fmt(cats[0].value)}</b> (${(cats[0].value / exp * 100).toFixed(0)}% of expenses).`]);
   if (ptx.length && exp) {
     const same = expOf(ptx.filter(t => +t.date.slice(8) <= dayN)), d = same ? (exp - same) / same * 100 : 0;
@@ -1481,21 +1604,20 @@ function renderHome(el) {
   }
   const big = tx.filter(t => t.type === 'expense' && !isFixed(t)).sort((a, b) => b.amount - a.amount)[0];
   if (big) ins.push(['💸', `Biggest one-off spend: <b>${fmt(big.amount)}</b> on ${esc(big.note || big.category)} (${shortDate(big.date)}).`]);
-  const spendDays = new Set(tx.filter(t => t.type === 'expense').map(t => t.date)), ns = dayN - spendDays.size;
+  const ns = dayN - new Set(tx.filter(t => t.type === 'expense').map(t => t.date)).size;
   if (tx.length) ins.push(['🧘', `<b>${ns} no-spend day${ns === 1 ? '' : 's'}</b> ${isCur ? 'so far' : ''} this month. ${ns >= 5 ? 'Nice discipline!' : 'Try a few more!'}`]);
   if (inc) ins.push(['🎯', `Savings rate is <b>${rate.toFixed(0)}%</b>. ${rate >= 30 ? 'Excellent — keep it up!' : rate >= 20 ? 'Healthy — aim for 30%.' : 'Aim for 20%+ to build wealth.'}`]);
   const schedExp = isCur ? expOf(txOfMonth(m, true).filter(isFuture)) : 0;
   if (schedExp) ins.unshift(['⏳', `<b>${fmt(schedExp)}</b> more is scheduled later this month${budget ? ` — <b>${fmt(budget - exp - schedExp)}</b> of budget left after that` : ''}.`]);
-  h = reviewBanner() + h + homeLinks(m, cats, exp);
-  if (ins.length) h += `<div class="ins-row">${ins.map(([e, p]) => `<div class="ins"><span class="e">${e}</span><p>${p}</p></div>`).join('')}</div>`;
-
-  // sections (assembled in display order at the end; each one collapsible)
-  const sec = {};
-  if (budget) {
-    const pct = exp / budget * 100, pace = dayN / dim * 100, cls = exp > budget ? 'over' : isCur && pct > pace * 1.05 ? 'warn' : 'ok';
-    const lbl = { over: 'Over budget', warn: 'Above pace', ok: 'On track' }[cls];
-    const projected = isCur ? exp / dayN * dim : exp;
-    sec.budget = `<div class="card">
+  return ins.length ? `<div class="ins-row">${ins.map(([e, p]) => `<div class="ins"><span class="e">${e}</span><p>${p}</p></div>`).join('')}</div>` : '';
+}
+function budgetCard(m) {
+  const budget = +D.settings.budget || 0; if (!budget) return '';
+  const exp = expOf(txOfMonth(m)), isCur = m === curYM(), dim = daysInMonth(m), dayN = isCur ? new Date().getDate() : dim, daysLeft = isCur ? dim - dayN + 1 : 0;
+  const pct = exp / budget * 100, pace = dayN / dim * 100, cls = exp > budget ? 'over' : isCur && pct > pace * 1.05 ? 'warn' : 'ok';
+  const lbl = { over: 'Over budget', warn: 'Above pace', ok: 'On track' }[cls];
+  const projected = isCur ? exp / dayN * dim : exp;
+  return `<div class="card">
       <div class="card-h"><div><h3>Monthly budget</h3><div class="sub">${fmt(budget)} limit · <a class="link" data-action="settings">edit</a></div></div><span class="pill ${cls}">${lbl}</span></div>
       <div class="budget-top"><div><span class="big">${fmt(exp)}</span> <span class="muted sm">spent</span></div><div class="sm ${exp > budget ? 'neg' : 'muted'}">${exp > budget ? fmt(exp - budget) + ' over' : fmt(budget - exp) + ' left'}</div></div>
       <div class="progress"><div class="bar ${cls === 'ok' ? '' : cls}" style="width:${clamp(pct, 0, 100)}%"></div>${isCur ? `<div class="pace-mark" style="left:${pace}%" data-tip="Today's pace: ${fmt(budget * pace / 100)}"></div>` : ''}</div>
@@ -1505,16 +1627,6 @@ function renderHome(el) {
         <div class="stat"><div class="l">${isCur ? 'Safe / day' : 'Budget / day'}</div><div class="v ${isCur && budget - exp <= 0 ? 'neg' : ''}">${isCur ? fmt(Math.max(0, budget - exp) / daysLeft) : fmt(budget / dim)}</div></div>
         <div class="stat"><div class="l">${isCur ? 'Projected' : 'Final'}</div><div class="v ${projected > budget ? 'neg' : 'pos'}">${fmtC(projected)}</div></div>
       </div></div>`;
-  }
-
-  // live credit card dues, recurring bills, short-term EMIs
-  sec.recurring = recurCard(m);
-  sec.emis = emiCard(m);
-
-  // upcoming (scheduled / future-dated) + recent
-  sec.upcoming = upcomingCard(m);
-  h += HOME_ORDER.map(k => secWrap(k, sec[k])).join('');
-  el.innerHTML = h;
 }
 
 /* Month analysis (shown in Insights → Month; calendar also in Activity) */
@@ -1563,16 +1675,8 @@ function monthSections(m) {
   return sec;
 }
 function calendarCard(m) { return monthSections(m).calendar; }
-function homeLinks(m, cats, exp) {
-  const cs = m === curYM() && !serverOutdated() ? cards() : [], due = sum(cs, c => Math.max(0, cardDue(c) || 0));
-  const top = cats[0], items = [];
-  if (top) items.push(`<button class="hl" data-action="go-insights"><span class="e">📊</span><span><small>Top category</small><b>${top.icon} ${esc(top.name)}</b></span></button>`);
-  if (due > 0) items.push(`<button class="hl" data-tab="worth"><span class="e">💳</span><span><small>Card dues</small><b class="neg">${fmtC(due)}</b></span></button>`);
-  items.push(`<button class="hl" data-action="go-calendar"><span class="e">📅</span><span><small>Daily view</small><b>Calendar</b></span></button>`);
-  return `<div class="hl-row">${items.join('')}</div>`;
-}
 ACTIONS['go-insights'] = () => { S.range = 'mo'; setTab('dash'); };
-ACTIONS['go-calendar'] = () => { S.txScope = 'month'; collapsed.delete('calendar'); localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed])); setTab('txns'); };
+ACTIONS['go-calendar'] = () => { S.txScope = 'month'; setColl('calendar', false); setTab('txns'); };
 const byDateAsc = (a, b) => a.date.localeCompare(b.date) || (a.ts || 0) - (b.ts || 0);
 function upcomingCard(m) {
   const future = m > curYM(), list = (future ? txOfMonth(m, true) : D.txns.filter(isFuture)).sort(byDateAsc);
@@ -1663,6 +1767,7 @@ function renderTxns(el) {
       ${tags.length ? `<div class="chips">${active ? '<button class="chip" data-action="tx-clear">✕ Clear</button>' : ''}${tags.map(g => `<button class="chip${f.tag === g ? ' on' : ''}" data-action="tx-tag" data-v="${esc(g)}">#${esc(g)}</button>`).join('')}</div>` : ''}
     </div>
     ${reviewBanner()}
+    ${S.txScope === 'month' && S.month === curYM() ? secWrap('upcoming', upcomingCard(S.month)) : ''}
     ${S.txScope === 'month' && S.month <= curYM() ? secWrap('calendar', calendarCard(S.month)) : ''}
     <div id="txListWrap"></div>`;
   $('#txQ').addEventListener('input', e => { f.q = e.target.value; renderTxList(); });
@@ -2002,6 +2107,7 @@ const RANGE_SEG = () => `<div class="seg" style="margin:4px 0 14px">${Object.ent
 function renderDashMonth(el) {
   const m = S.month > curYM() ? curYM() : S.month, sec = monthSections(m);
   el.innerHTML = RANGE_SEG() + `<div class="muted sm" style="margin:-6px 4px 12px">${mLong(m)} · use the month switch above to compare</div>`
+    + monthInsights(m) + secWrap('budget', budgetCard(m))
     + ['categories', 'pace', 'income'].map(k => secWrap(k, sec[k])).join('');
 }
 ACTIONS['tag-go'] = el => { S.txScope = 'all'; S.f = { q: '', type: 'all', cat: '', method: '', tag: el.dataset.v }; setTab('txns'); };
