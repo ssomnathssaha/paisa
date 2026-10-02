@@ -95,13 +95,19 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 
 /* ---------- App shell ---------- */
 .app{max-width:520px;margin:0 auto;min-height:100vh;position:relative}
-.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px)}
-.tb-hello{font-size:12px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:6px;min-width:0}
-#tbHello{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topbar>div:first-child{min-width:0;flex:1}
-.sync{flex:none;cursor:pointer;font-weight:700;font-size:11px;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.topbar{position:sticky;top:0;z-index:20;display:flex;flex-direction:column;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px)}
+.tb-row{display:flex;align-items:center;gap:8px;min-width:0}
+.tb-hello{flex:1;min-width:0;font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-row .icon-btn{width:34px;height:34px;border-radius:11px}
+.sync{flex:none;cursor:pointer;font-weight:700;font-size:11.5px;height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:99px;white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
 .sync.saved{color:var(--income);background:rgba(34,197,94,.12)} .sync.saving{color:var(--muted);background:var(--surface-2)} .sync.error{color:var(--expense);background:rgba(244,63,94,.12)}
-.tb-hello:has(.sync.error) #tbHello{display:none}
+.hl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin:0 0 14px}
+.hl{display:flex;align-items:center;gap:8px;padding:10px;border-radius:14px;background:var(--surface);border:1px solid var(--border);text-align:left;min-width:0}
+.hl .e{font-size:18px;flex:none}
+.hl span:last-child{display:flex;flex-direction:column;min-width:0}
+.hl small{font-size:10.5px;color:var(--muted)}
+.hl b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-row .tb-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* collapsible Home sections */
 [data-action="toggle-sec"]{cursor:pointer;-webkit-user-select:none;user-select:none}
 [data-action="toggle-sec"]::after{content:"";flex:none;width:18px;height:18px;margin-left:2px;background:var(--muted);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat;transition:transform .2s}
@@ -112,10 +118,10 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 .hsec.collapsed > .card-h{margin-bottom:14px!important}
 .tb-title{font-size:23px;font-weight:800;letter-spacing:-.03em;line-height:1.15}
 .tb-right{display:flex;align-items:center;gap:8px}
-.month-switch{display:flex;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:999px;height:38px;padding:0 3px}
+.month-switch{flex:none;display:flex;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:999px;height:38px;padding:0 3px}
 .month-switch button{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
 .month-switch button:disabled{opacity:.25}
-.month-switch span{font-size:13px;font-weight:700;padding:0 2px;min-width:66px;text-align:center;cursor:pointer}
+.month-switch span{font-size:13px;font-weight:700;padding:0 2px;min-width:62px;white-space:nowrap;text-align:center;cursor:pointer}
 .icon-btn{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--border);color:var(--text)}
 main{padding:4px 16px calc(112px + env(safe-area-inset-bottom))}
 .view{animation:fadeUp .35s ease both}
@@ -440,17 +446,18 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
 <!-- ============ APP ============ -->
 <div class="app" id="app" hidden>
   <header class="topbar">
-    <div>
-      <div class="tb-hello"><span id="sync" class="sync" data-action="sync-retry" hidden></span><span id="tbHello"></span></div>
-      <div class="tb-title" id="tbTitle">Overview</div>
+    <div class="tb-row">
+      <div class="tb-hello" id="tbHello"></div>
+      <span id="sync" class="sync" data-action="sync-retry" role="button" hidden></span>
+      <button class="icon-btn" data-action="settings" aria-label="Settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
     </div>
-    <div class="tb-right">
+    <div class="tb-row">
+      <div class="tb-title" id="tbTitle">Overview</div>
       <div class="month-switch" id="monthSwitch">
         <button data-action="prev-month" aria-label="Previous month"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
         <span id="monthLabel" data-action="pick-month"></span>
         <button data-action="next-month" id="nextMonthBtn" aria-label="Next month"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
       </div>
-      <button class="icon-btn" data-action="settings" aria-label="Settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
     </div>
   </header>
   <main>
@@ -978,7 +985,7 @@ function seed() {
 <!-- ===================== SCRIPT 2/5: UI core, charts, lock screen, router ===================== -->
 <script>
 'use strict';
-const S = { tab: 'home', month: curYM(), range: '6', txScope: 'month', f: { q: '', type: 'all', cat: '', method: '', tag: '' } };
+const S = { tab: 'home', month: curYM(), range: 'mo', txScope: 'month', f: { q: '', type: 'all', cat: '', method: '', tag: '' } };
 const ACTIONS = {}; // data-action handlers, registered by each script block
 const TITLES = { home: 'This Month', txns: 'Activity', dash: 'Insights', worth: 'Net Worth' };
 
@@ -1202,7 +1209,7 @@ function render() {
   if (!D) return;
   $('#tbHello').textContent = greeting();
   $('#tbTitle').textContent = S.tab === 'home' && S.month !== curYM() ? mLong(S.month) : TITLES[S.tab];
-  $('#monthSwitch').hidden = !(S.tab === 'home' || (S.tab === 'txns' && S.txScope === 'month'));
+  $('#monthSwitch').hidden = !(S.tab === 'home' || (S.tab === 'txns' && S.txScope === 'month') || (S.tab === 'dash' && S.range === 'mo'));
   $('#monthLabel').textContent = mLabel(S.month);
   $('#nextMonthBtn').disabled = S.month >= MAX_MONTH();
   const fn = { home: renderHome, txns: renderTxns, dash: renderDash, worth: renderWorth }[S.tab];
@@ -1412,7 +1419,7 @@ function catTotals(tx, type) {
 
 /* ================= HOME ================= */
 // Home section order (credit card dues near the bottom) + collapsible sections, remembered per device.
-const HOME_ORDER = ['budget', 'upcoming', 'recurring', 'categories', 'calendar', 'pace', 'income', 'emis', 'cards'];
+const HOME_ORDER = ['budget', 'upcoming', 'recurring', 'emis'];
 const COLLAPSE_KEY = 'paisa_collapsed';
 const collapsed = (() => { try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || []); } catch (e) { return new Set(); } })();
 function secWrap(key, html) {
@@ -1464,6 +1471,7 @@ function renderHome(el) {
   if (inc) ins.push(['🎯', `Savings rate is <b>${rate.toFixed(0)}%</b>. ${rate >= 30 ? 'Excellent — keep it up!' : rate >= 20 ? 'Healthy — aim for 30%.' : 'Aim for 20%+ to build wealth.'}`]);
   const schedExp = isCur ? expOf(txOfMonth(m, true).filter(isFuture)) : 0;
   if (schedExp) ins.unshift(['⏳', `<b>${fmt(schedExp)}</b> more is scheduled later this month${budget ? ` — <b>${fmt(budget - exp - schedExp)}</b> of budget left after that` : ''}.`]);
+  h += homeLinks(m, cats, exp);
   if (ins.length) h += `<div class="ins-row">${ins.map(([e, p]) => `<div class="ins"><span class="e">${e}</span><p>${p}</p></div>`).join('')}</div>`;
 
   // sections (assembled in display order at the end; each one collapsible)
@@ -1485,10 +1493,21 @@ function renderHome(el) {
   }
 
   // live credit card dues, recurring bills, short-term EMIs
-  if (isCur) sec.cards = cardsCard(false);
   sec.recurring = recurCard(m);
   sec.emis = emiCard(m);
 
+  // upcoming (scheduled / future-dated) + recent
+  sec.upcoming = upcomingCard(m);
+  h += HOME_ORDER.map(k => secWrap(k, sec[k])).join('');
+  el.innerHTML = h;
+}
+
+/* Month analysis (shown in Insights → Month; calendar also in Activity) */
+function monthSections(m) {
+  const tx = txOfMonth(m), pm = addMonths(m, -1), ptx = txOfMonth(pm);
+  const inc = incOf(tx), exp = expOf(tx), isCur = m === curYM(), dim = daysInMonth(m);
+  const dayN = isCur ? new Date().getDate() : dim, budget = +D.settings.budget || 0;
+  const cats = catTotals(tx, 'expense'), sec = {};
   // spending pace chart (cumulative)
   const pdim = daysInMonth(pm), cum = (list, n, cut) => { let c = 0; const by = {}; list.filter(t => t.type === 'expense').forEach(t => by[+t.date.slice(8)] = (by[+t.date.slice(8)] || 0) + t.amount); return Array.from({ length: n }, (_, i) => (i + 1 > cut ? null : (c += by[i + 1] || 0))); };
   const days = Array.from({ length: dim }, (_, i) => String(i + 1));
@@ -1526,11 +1545,19 @@ function renderHome(el) {
   const incs = catTotals(tx, 'income');
   if (incs.length) sec.income = `<div class="card"><div class="card-h"><div><h3>Income sources</h3><div class="sub">${fmt(inc)} total</div></div></div>${catBars(incs, inc, ptx, 'income')}</div>`;
 
-  // upcoming (scheduled / future-dated) + recent
-  sec.upcoming = upcomingCard(m);
-  h += HOME_ORDER.map(k => secWrap(k, sec[k])).join('');
-  el.innerHTML = h;
+  return sec;
 }
+function calendarCard(m) { return monthSections(m).calendar; }
+function homeLinks(m, cats, exp) {
+  const cs = m === curYM() && !serverOutdated() ? cards() : [], due = sum(cs, c => Math.max(0, cardDue(c) || 0));
+  const top = cats[0], items = [];
+  if (top) items.push(`<button class="hl" data-action="go-insights"><span class="e">📊</span><span><small>Top category</small><b>${top.icon} ${esc(top.name)}</b></span></button>`);
+  if (due > 0) items.push(`<button class="hl" data-tab="worth"><span class="e">💳</span><span><small>Card dues</small><b class="neg">${fmtC(due)}</b></span></button>`);
+  items.push(`<button class="hl" data-action="go-calendar"><span class="e">📅</span><span><small>Daily view</small><b>Calendar</b></span></button>`);
+  return `<div class="hl-row">${items.join('')}</div>`;
+}
+ACTIONS['go-insights'] = () => { S.range = 'mo'; setTab('dash'); };
+ACTIONS['go-calendar'] = () => { S.txScope = 'month'; collapsed.delete('calendar'); localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed])); setTab('txns'); };
 const byDateAsc = (a, b) => a.date.localeCompare(b.date) || (a.ts || 0) - (b.ts || 0);
 function upcomingCard(m) {
   const future = m > curYM(), list = (future ? txOfMonth(m, true) : D.txns.filter(isFuture)).sort(byDateAsc);
@@ -1620,6 +1647,7 @@ function renderTxns(el) {
       </div>
       ${tags.length ? `<div class="chips">${active ? '<button class="chip" data-action="tx-clear">✕ Clear</button>' : ''}${tags.map(g => `<button class="chip${f.tag === g ? ' on' : ''}" data-action="tx-tag" data-v="${esc(g)}">#${esc(g)}</button>`).join('')}</div>` : ''}
     </div>
+    ${S.txScope === 'month' && S.month <= curYM() ? secWrap('calendar', calendarCard(S.month)) : ''}
     <div id="txListWrap"></div>`;
   $('#txQ').addEventListener('input', e => { f.q = e.target.value; renderTxList(); });
   $('#fCat').addEventListener('change', e => { f.cat = e.target.value; renderTxList(); });
@@ -1777,13 +1805,14 @@ function rangeMonths() {
   return monthsBetween(addMonths(cur, -(+S.range - 1)), cur);
 }
 function renderDash(el) {
+  if (S.range === 'mo') return renderDashMonth(el);
   const months = rangeMonths(), labs = months.map(m => MONTHS[+m.slice(5) - 1]), tips = months.map(m => mLabel(m, true));
   const from = months[0], to = months[months.length - 1];
   const tx = D.txns.filter(t => t.date.slice(0, 7) >= from && t.date.slice(0, 7) <= to && !isFuture(t));
   const incs = months.map(m => incOf(txOfMonth(m))), exps = months.map(m => expOf(txOfMonth(m))), nets = incs.map((v, i) => v - exps[i]);
   const TI = sum(incs, x => x), TE = sum(exps, x => x), TN = TI - TE, n = months.length;
   const w = worthAt(to), fixed = sum(tx.filter(t => t.type === 'expense' && isFixed(t)));
-  const rangeLbl = { 3: '3M', 6: '6M', 12: '12M', fy: 'FY', all: 'All' };
+  const rangeLbl = { mo: 'Month', 3: '3M', 6: '6M', 12: '12M', fy: 'FY', all: 'All' };
 
   let h = `<div class="seg" style="margin:4px 0 14px">${Object.entries(rangeLbl).map(([v, l]) => `<button data-action="range" data-v="${v}" class="${S.range === v ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div class="muted sm" style="margin:-6px 4px 12px">${mLabel(from, true)} – ${mLabel(to, true)} · ${n} month${n > 1 ? 's' : ''}${S.range === 'fy' ? ' (Indian FY, Apr–Mar)' : ''}</div>
@@ -1846,6 +1875,12 @@ function renderDash(el) {
   el.innerHTML = h;
 }
 ACTIONS['range'] = el => { S.range = el.dataset.v; render(); };
+const RANGE_SEG = () => `<div class="seg" style="margin:4px 0 14px">${Object.entries({ mo: 'Month', 3: '3M', 6: '6M', 12: '12M', fy: 'FY', all: 'All' }).map(([v, l]) => `<button data-action="range" data-v="${v}" class="${S.range === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+function renderDashMonth(el) {
+  const m = S.month > curYM() ? curYM() : S.month, sec = monthSections(m);
+  el.innerHTML = RANGE_SEG() + `<div class="muted sm" style="margin:-6px 4px 12px">${mLong(m)} · use the month switch above to compare</div>`
+    + ['categories', 'pace', 'income'].map(k => secWrap(k, sec[k])).join('');
+}
 ACTIONS['tag-go'] = el => { S.txScope = 'all'; S.f = { q: '', type: 'all', cat: '', method: '', tag: el.dataset.v }; setTab('txns'); };
 </script>
 

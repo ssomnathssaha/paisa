@@ -2,8 +2,8 @@
 // - index.html: network-first (you always get the latest version when online), cached copy when offline.
 // - icons/manifest: cache-first.
 // - Everything else (Google Apps Script sync, fonts, POST requests) is never touched.
-const CACHE = 'paisa-v4';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'paisa-v5';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './badge-96.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -36,7 +36,7 @@ self.addEventListener('push', e => {
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
     const vis = cs.find(c => c.visibilityState === 'visible');
     if (vis) { cs.forEach(c => c.postMessage({ paisaPush: { title, body } })); return; }
-    return self.registration.showNotification(title, { body, icon: './icon-192.png', badge: './icon-192.png', tag: d.tag || 'paisa-txn', renotify: true, data: { url: d.url || './' } });
+    return self.registration.showNotification(title, { body, icon: './icon-192.png', badge: './badge-96.png', tag: d.tag || 'paisa-txn', renotify: true, data: { url: d.url || './' } });
   }));
 });
 
