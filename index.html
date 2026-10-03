@@ -170,7 +170,7 @@ main{padding:4px 16px calc(112px + env(safe-area-inset-bottom))}
 .tab svg.i{width:23px;height:23px}
 .tab.on{color:var(--text)}
 .tab.on svg.i{color:var(--accent)}
-.fab{justify-self:center;width:58px;height:58px;border-radius:20px;background:var(--grad);color:#fff;display:grid;place-items:center;margin-top:-28px;box-shadow:0 14px 30px -6px rgba(139,92,246,.7);transition:transform .2s}
+.fab{justify-self:center;width:58px;height:58px;border-radius:20px;background:var(--grad);color:#fff;display:grid;place-items:center;position:fixed;z-index:31;right:max(16px,calc(50% - 244px));bottom:calc(86px + env(safe-area-inset-bottom));box-shadow:0 14px 30px -6px rgba(139,92,246,.7);transition:transform .2s}
 .fab:active{transform:scale(.92) rotate(90deg)}
 .fab svg.i{width:28px;height:28px;stroke-width:2.6}
 
@@ -210,6 +210,7 @@ main{padding:4px 16px calc(112px + env(safe-area-inset-bottom))}
 .big{font-size:24px;font-weight:800;letter-spacing:-.02em}
 .pill{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:99px;background:var(--surface-2);white-space:nowrap}
 .pill.ok{background:rgba(34,197,94,.14);color:var(--income)}
+.pill.bad{background:rgba(244,63,94,.14);color:var(--expense,#f43f5e)}
 .pill.warn{background:rgba(245,158,11,.14);color:var(--warn)}
 .pill.over{background:rgba(244,63,94,.14);color:var(--expense)}
 .stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
@@ -458,6 +459,27 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
   .app{border-left:1px solid var(--border);border-right:1px solid var(--border)}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.cc-hero{padding:16px}.cc-big{font-size:32px;font-weight:800;letter-spacing:-.5px;margin:2px 0 10px}
+.cc-tiles{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px 10px;padding:2px 16px 6px;scrollbar-width:none}.cc-tiles::-webkit-scrollbar{display:none}
+.cc-tile{flex:0 0 82%;scroll-snap-align:center;border-radius:20px;padding:16px;color:#fff;box-shadow:0 12px 28px -12px rgba(0,0,0,.5);cursor:pointer}
+.cc-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;opacity:.95}.cc-row.sm{font-size:12px;opacity:.9}
+.cc-amt{font-size:28px;font-weight:800;margin:18px 0 8px;letter-spacing:-.5px}.cc-amt small{font-size:12px;font-weight:500;margin-left:8px;opacity:.8}
+.cc-bar{height:6px;border-radius:9px;background:rgba(255,255,255,.28);margin-bottom:10px;overflow:hidden}.cc-bar i{display:block;height:100%;background:#fff;border-radius:9px}
+.cc-tile .btn{background:rgba(255,255,255,.95);color:#111;border:0}
+.stm-m{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:14px 2px 8px}
+.stm{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:10px}
+.stm-top{display:flex;align-items:center;gap:8px;margin-bottom:12px}.stm-bank{font-weight:800;font-size:15px}
+.stm-card{font-size:12px;padding:2px 8px;border-radius:99px;background:rgba(139,92,246,.16);color:#a78bfa;font-weight:600}.stm-dt{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.stm-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px;margin-bottom:12px}.stm-grid small{display:block;font-size:11px;color:var(--faint);margin-bottom:2px}.stm-grid b{font-size:15px;display:block}.stm-grid .pill{margin-top:3px;display:inline-block}
+.stm-pw{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.45;color:var(--muted);background:rgba(148,163,184,.1);border-radius:12px;padding:9px 10px;margin-bottom:10px}.stm-pw>div{flex:1}
+.stm-pwi{display:flex;gap:6px;margin-bottom:10px}.stm-pwi .inp{flex:1;min-width:0}
+.stm-cal{padding:12px}.cal-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}.cal-w span{font-size:11px;color:var(--faint);padding:4px 0}
+.cal-d{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;font-size:13px;gap:2px}.cal-d.td span{color:var(--accent);font-weight:800}.cal-d.sel{background:rgba(139,92,246,.2)}
+.cal-d em{display:flex;gap:3px;height:6px}.dot{display:inline-block;width:6px;height:6px;border-radius:50%}.dot.em{background:#8b5cf6}.dot.du{background:#f43f5e}
+.cal-k{display:flex;gap:14px;font-size:11.5px;color:var(--faint);margin-top:8px;justify-content:center}
+.stm-act{display:flex;gap:8px}.stm-act .btn:first-child{flex:1}
+.stm-dup{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(245,158,11,.14);color:var(--warn);font-size:13px;font-weight:600;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -502,15 +524,17 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
     <section class="view" id="view-home"></section>
     <section class="view" id="view-txns" hidden></section>
     <section class="view" id="view-dash" hidden></section>
+    <section class="view" id="view-cards" hidden></section>
     <section class="view" id="view-worth" hidden></section>
   </main>
   <nav class="tabbar">
     <button class="tab on" data-tab="home"><svg class="i" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg>Home</button>
     <button class="tab" data-tab="txns"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r=".6"/><circle cx="3.5" cy="12" r=".6"/><circle cx="3.5" cy="18" r=".6"/></svg>Activity</button>
-    <button class="fab" data-action="add" aria-label="Add transaction"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     <button class="tab" data-tab="dash"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-7"/></svg>Insights</button>
+    <button class="tab" data-tab="cards"><svg class="i" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></svg>Cards</button>
     <button class="tab" data-tab="worth"><svg class="i" viewBox="0 0 24 24"><path d="M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2"/><path d="M22 11h-5a2 2 0 0 0 0 4h5z"/></svg>Net Worth</button>
   </nav>
+  <button class="fab" data-action="add" aria-label="Add transaction"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
 </div>
 
 <!-- ============ OVERLAYS ============ -->
@@ -1027,7 +1051,7 @@ function seed() {
 'use strict';
 const S = { tab: 'home', month: curYM(), range: 'mo', txScope: 'month', f: { q: '', type: 'all', cat: '', method: '', tag: '' } };
 const ACTIONS = {}; // data-action handlers, registered by each script block
-const TITLES = { home: 'This Month', txns: 'Activity', dash: 'Insights', worth: 'Net Worth' };
+const TITLES = { home: 'This Month', txns: 'Activity', dash: 'Insights', cards: 'Credit Cards', worth: 'Net Worth' };
 
 /* ---------- theme ---------- */
 function applyTheme(t) {
@@ -1252,7 +1276,7 @@ function render() {
   $('#monthSwitch').hidden = !(S.tab === 'home' || (S.tab === 'txns' && S.txScope === 'month') || (S.tab === 'dash' && S.range === 'mo'));
   $('#monthLabel').textContent = mLabel(S.month);
   $('#nextMonthBtn').disabled = S.month >= MAX_MONTH();
-  const fn = { home: renderHome, txns: renderTxns, dash: renderDash, worth: renderWorth }[S.tab];
+  const fn = { home: renderHome, txns: renderTxns, dash: renderDash, cards: renderCards, worth: renderWorth }[S.tab];
   const el = $('#view-' + S.tab);
   el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
   fn && fn(el);
@@ -1921,9 +1945,20 @@ ACTIONS['edit-tx'] = el => { const t = D.txns.find(x => x.id === el.dataset.id);
 const Stmts = {
   items: [],
   demo() { const d = n => { const x = new Date(); x.setMonth(x.getMonth() - n, 3); return dstr(x); };
-    return [{ id: 'd1', date: d(0), bank: 'HDFC', card: '4321', amount: 24567.5, minDue: 1230, dueDate: d(-1), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/' },
-      { id: 'd2', date: d(1), bank: 'HDFC', card: '4321', amount: 18890, minDue: 945, dueDate: d(0), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/' },
-      { id: 'd3', date: d(1), bank: 'Axis', card: '1234', amount: 5000, minDue: 250, dueDate: d(0), name: 'Axis card 1234 - statement.pdf', url: 'https://drive.google.com/' }]; },
+    return [{ id: 'd1', date: d(0), bank: 'HDFC', product: 'Swiggy HDFC', card: '4321', amount: 24567.5, minDue: 1230, dueDate: d(-1), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/', pwHint: 'The password is the first four letters of your name in CAPITALS followed by DDMM of your date of birth.' },
+      { id: 'd2', date: d(1), bank: 'HDFC', product: 'Swiggy HDFC', card: '4321', amount: 18890, minDue: 945, dueDate: d(0), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/' },
+      { id: 'd3', date: d(1), bank: 'Axis', product: 'Axis Flipkart', card: '1234', amount: 5000, minDue: 250, dueDate: d(0), name: 'Axis card 1234 - statement.pdf', url: 'https://drive.google.com/' }]; },
+  async save(id, patch) {
+    const x = this.items.find(i => i.id === id); if (!x) return;
+    Object.assign(x, patch); if (patch.hidden) this.items = this.items.filter(i => i.id !== id);
+    if (CONFIG.MODE !== 'sheets') return;
+    try { await api('stmtSave', { s: { id, ...patch } }); } catch (e) { toast('Saved here, but not to the Sheet: ' + e.message); }
+  },
+  dupes() {
+    const g = {}; this.items.forEach(x => { if (!x.amount && !x.dueDate) return; const k = [x.date, x.amount || '', x.dueDate || ''].join('|'); (g[k] = g[k] || []).push(x); });
+    const sc = x => (x.product ? 2 : 0) + (x.bank && !/\s/.test(x.bank) ? 1 : 0);
+    return Object.values(g).filter(a => a.length > 1).flatMap(a => a.slice().sort((p, q) => sc(q) - sc(p)).slice(1));
+  },
   async refresh() { try { const r = await api('statements'); if (r.statements) this.items = r.statements; } catch (e) { /* offline */ } }
 };
 const Inbox = {
@@ -2335,7 +2370,7 @@ function cardsCard(full) {
       ${lim ? `<div class="emi-prog"><i style="width:${clamp(util, 0, 100)}%;${util > 70 ? 'background:linear-gradient(90deg,#f59e0b,#f43f5e)' : ''}"></i></div><div class="emi-meta"><span>${util.toFixed(0)}% of ${fmtC(lim)} limit used</span><span>${fmtC(Math.max(0, lim - due))} available</span></div>` : ''}</div>`;
   }).join('');
   return `<div class="card"><div class="card-h"><div><h3>💳 Credit card dues</h3><div class="sub">Live · card spends add, bill payments reduce</div></div><span class="neg num" style="font-weight:700">${fmt(total)}</span></div>${rows}
-    <button class="btn ghost block" style="margin-top:10px" data-action="statements">📄 Card statements</button>
+    <button class="btn ghost block" style="margin-top:10px" data-tab="cards">📄 Statements & all cards</button>
     ${full ? '<button class="btn ghost block" style="margin-top:10px" data-action="acc-add-card">+ Add credit card</button>' : ''}</div>`;
 }
 function payCardForm(cardId, t, pre) {
@@ -2385,20 +2420,111 @@ ACTIONS['pay-card'] = el => payCardForm(el.dataset.id);
 /* ================= SETTINGS ================= */
 const hourOpts = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${+sel === h ? ' selected' : ''}>${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}</option>`).join('');
 document.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) window.open(b.dataset.open, '_blank', 'noopener'); });
-ACTIONS['statements'] = () => {
-  const body = () => {
-    if (CONFIG.MODE === 'sheets' && serverOutdated()) return '<p class="muted sm">Update your Apps Script (Code.gs, see SETUP.md) to turn on card statements.</p>';
-    if (!Stmts.items.length) return emptyState('📄', 'No statements yet', 'Card statement emails with a PDF are saved to Google Drive automatically (checked every 30 min). In the sheet menu run Paisa → Import card statements now.');
-    const by = {}; Stmts.items.forEach(x => { const k = (x.date || '').slice(0, 7); (by[k] = by[k] || []).push(x); });
-    return Object.keys(by).sort().reverse().map(k => `<div class="sec-title">${esc(new Date(k + '-01T00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }))}</div><div class="set-group">${by[k].map(x => `
-      <button class="set-item" data-open="${esc(x.url)}"><span class="ic">📄</span><span class="t">${esc(x.bank)} card${x.card ? ' ••' + esc(x.card) : ''}<small>${x.amount ? 'Total due ' + fmt(x.amount) : 'Statement'}${x.minDue ? ' · min ' + fmt(x.minDue) : ''}${x.dueDate ? ' · due ' + esc(x.dueDate) : ''}</small></span>›</button>`).join('')}</div>`).join('');
-  };
-  openSheet('Card statements', '', el => {
-    const root = el || document.getElementById('sheetBody') || document.querySelector('.sheet .body');
-    if (root) { root.innerHTML = body(); }
-    if (CONFIG.MODE === 'sheets') Stmts.refresh().then(() => { if (root && root.isConnected) root.innerHTML = body(); });
+ACTIONS['statements'] = () => { S.stBank = ''; setTab('cards'); setTimeout(() => { const x = $('#stmtSec'); x && x.scrollIntoView({ behavior: 'smooth' }); }, 80); };
+ACTIONS['stm-bank'] = el => { S.stBank = el.dataset.b || ''; render(); };
+const CARD_GRADS = ['linear-gradient(135deg,#6d28d9,#db2777)', 'linear-gradient(135deg,#0ea5e9,#6366f1)', 'linear-gradient(135deg,#059669,#0891b2)', 'linear-gradient(135deg,#ea580c,#be123c)', 'linear-gradient(135deg,#475569,#1e293b)'];
+const shortD = (d, y) => d ? new Date(d + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(y ? { year: 'numeric' } : {}) }) : '—';
+const daysTo = d => Math.round((new Date(d + 'T00:00') - new Date(today() + 'T00:00')) / 864e5);
+function duePill(d) {
+  if (!d) return '';
+  const n = daysTo(d);
+  return n < 0 ? `<span class="pill bad">${-n}d overdue</span>` : n === 0 ? '<span class="pill bad">Due today</span>' : n <= 5 ? `<span class="pill warn">in ${n}d</span>` : `<span class="pill ok">in ${n}d</span>`;
+}
+const StPw = {
+  K: 'paisa_stpw',
+  all() { try { return JSON.parse(localStorage.getItem(this.K)) || {}; } catch (e) { return {}; } },
+  get(k) { return this.all()[k] || ''; },
+  set(k, v) { const a = this.all(); if (v) a[k] = v; else delete a[k]; localStorage.setItem(this.K, JSON.stringify(a)); }
+};
+const stLabel = x => x.product || x.bank || 'Card';
+function stmCard(x) {
+  const k = stLabel(x), pw = StPw.get(k);
+  return `<div class="stm">
+      <div class="stm-top"><span class="stm-bank">${esc(k)}</span>${x.card ? `<span class="stm-card">•••• ${esc(x.card)}</span>` : ''}<span class="stm-dt">📧 ${shortD(x.date, true)}</span></div>
+      <div class="stm-grid">
+        <div><small>Total due</small><b class="num">${x.amount ? fmt(x.amount) : '—'}</b></div>
+        <div><small>Min due</small><b class="num">${x.minDue ? fmt(x.minDue) : '—'}</b></div>
+        <div><small>Pay by</small><b>${shortD(x.dueDate)}</b>${duePill(x.dueDate)}</div>
+      </div>
+      <div class="stm-pw"><span>🔑</span><div>${x.pwHint ? esc(x.pwHint) : '<span class="faint">No password hint in this email — most banks use part of your name + date of birth or PAN.</span>'}</div></div>
+      <div class="stm-pwi"><input class="inp" type="password" autocomplete="off" data-pwkey="${esc(k)}" value="${esc(pw)}" placeholder="Type PDF password to save for ${esc(k)}"><button class="btn xs ghost" data-action="stm-eye" aria-label="Show">👁</button><button class="btn xs ghost" data-action="stm-copy">Copy</button></div>
+      <div class="stm-act"><button class="btn primary" data-open="${esc(x.url)}">📄 Open PDF</button><button class="btn ghost" data-action="stm-edit" data-id="${esc(x.id)}">✏️ Edit</button></div>
+    </div>`;
+}
+ACTIONS['stm-edit'] = el => {
+  const x = Stmts.items.find(i => i.id === el.dataset.id); if (!x) return;
+  const f = (id, label, v, extra = '') => `<div><label class="lbl">${label}</label><input class="inp" id="${id}" value="${esc(String(v ?? ''))}" ${extra}></div>`;
+  openSheet('Edit statement', `${f('seBank', 'Bank', x.bank)}${f('seProd', 'Card name', x.product, 'placeholder="e.g. Swiggy HDFC"')}${f('seCard', 'Card last 4 digits', x.card, 'inputmode="numeric" maxlength="4"')}
+    <div class="row2" style="margin:8px 0">${f('seAmt', 'Total due (₹)', x.amount || '', 'inputmode="decimal"')}${f('seMin', 'Min due (₹)', x.minDue || '', 'inputmode="decimal"')}</div>
+    <label class="lbl">Pay-by date</label><input class="inp" type="date" id="seDue" value="${esc(x.dueDate || '')}">
+    <label class="lbl">Password hint</label><textarea class="inp" id="seHint" rows="3">${esc(x.pwHint || '')}</textarea>
+    <button class="btn primary block" id="seSave" style="margin-top:12px">Save</button>
+    <button class="btn ghost block" id="seDel" style="margin-top:8px;color:var(--expense,#f43f5e)">Remove from list</button>
+    <p class="muted xs" style="margin-top:8px">Removing only hides it here — the PDF stays in your Drive folder.</p>`, body => {
+    $('#seSave', body).onclick = async () => {
+      await Stmts.save(x.id, { bank: $('#seBank').value.trim(), product: $('#seProd').value.trim(), card: $('#seCard').value.replace(/\D/g, '').slice(-4), amount: +$('#seAmt').value.replace(/,/g, '') || 0, minDue: +$('#seMin').value.replace(/,/g, '') || 0, dueDate: $('#seDue').value, pwHint: $('#seHint').value.trim() });
+      closeSheet(); render(); toast('Statement updated');
+    };
+    $('#seDel', body).onclick = async () => { if (!await confirmDlg('Remove statement?', 'It will be hidden from the list. The PDF stays in Drive.', 'Remove')) return; await Stmts.save(x.id, { hidden: true }); closeSheet(); render(); };
   });
 };
+ACTIONS['stm-dedupe'] = async () => { const d = Stmts.dupes(); if (!d.length || !await confirmDlg('Hide duplicates?', d.length + ' duplicate statement' + (d.length === 1 ? '' : 's') + ' will be hidden; the best-labelled copy is kept.', 'Hide')) return; for (const x of d) await Stmts.save(x.id, { hidden: true }); render(); toast('Duplicates hidden'); };
+ACTIONS['stm-eye'] = el => { const i = el.parentNode.querySelector('input'); i.type = i.type === 'password' ? 'text' : 'password'; };
+ACTIONS['stm-copy'] = el => { const v = el.parentNode.querySelector('input').value; if (!v) return toast('Type the password first'); (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Password copied'), () => toast('Could not copy')); };
+document.addEventListener('input', e => { const i = e.target.closest && e.target.closest('[data-pwkey]'); if (!i) return; StPw.set(i.dataset.pwkey, i.value); document.querySelectorAll('[data-pwkey]').forEach(o => { if (o !== i && o.dataset.pwkey === i.dataset.pwkey) o.value = i.value; }); });
+ACTIONS['stm-cal'] = el => { S.stCal = addMonths(S.stCal || curYM(), +el.dataset.n); S.stDay = ''; refreshStm(); };
+ACTIONS['stm-day'] = el => { S.stDay = S.stDay === el.dataset.d ? '' : el.dataset.d; refreshStm(); };
+function refreshStm() { const b = $('#stmtBody'); if (b && S.tab === 'cards') b.innerHTML = stmtHtml(); }
+function stmCal(all) {
+  const m = S.stCal || (S.stCal = curYM()), first = new Date(m + '-01T00:00'), pad0 = first.getDay(), days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const ev = {}; all.forEach(x => { if (x.date) (ev[x.date] = ev[x.date] || { e: 0, d: 0 }).e++; if (x.dueDate) (ev[x.dueDate] = ev[x.dueDate] || { e: 0, d: 0 }).d++; });
+  let cells = '<i></i>'.repeat(pad0);
+  for (let d = 1; d <= days; d++) {
+    const ds = m + '-' + pad(d), e = ev[ds];
+    cells += `<button class="cal-d${ds === today() ? ' td' : ''}${S.stDay === ds ? ' sel' : ''}" data-action="stm-day" data-d="${ds}"><span>${d}</span><em>${e ? (e.e ? '<b class="dot em"></b>' : '') + (e.d ? '<b class="dot du"></b>' : '') : ''}</em></button>`;
+  }
+  const inM = all.filter(x => (x.date || '').startsWith(m) || (x.dueDate || '').startsWith(m));
+  const shown = S.stDay ? all.filter(x => x.date === S.stDay || x.dueDate === S.stDay) : inM;
+  return `<div class="card stm-cal"><div class="cal-h"><button class="btn xs ghost" data-action="stm-cal" data-n="-1">‹</button><b>${esc(mLong(m))}</b><button class="btn xs ghost" data-action="stm-cal" data-n="1">›</button></div>
+    <div class="cal-w">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<span>${x}</span>`).join('')}</div><div class="cal-g">${cells}</div>
+    <div class="cal-k"><span><b class="dot em"></b> Statement email</span><span><b class="dot du"></b> Payment due</span></div></div>
+    <div class="stm-m">${S.stDay ? esc(shortD(S.stDay, true)) : esc(mLong(m))} · ${shown.length} statement${shown.length === 1 ? '' : 's'}</div>` +
+    (shown.length ? shown.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(stmCard).join('') : '<p class="muted sm" style="text-align:center;padding:10px">Nothing on this ' + (S.stDay ? 'day' : 'month') + '.</p>');
+}
+function stmtHtml() {
+  const all = Stmts.items;
+  if (CONFIG.MODE === 'sheets' && serverOutdated()) return '<p class="muted sm">Update your Apps Script (Code.gs, see SETUP.md) to turn on card statements.</p>';
+  if (!all.length) return emptyState('📄', 'No statements yet', 'Card statement emails with a PDF are saved to Google Drive automatically (checked every 30 min). In the sheet menu run Paisa → Import card statements now.');
+  const names = [...new Set(all.map(stLabel))].sort(), dn = Stmts.dupes().length;
+  const chips = `<div class="chips" style="margin-bottom:10px">${['', ...names].map(b => `<button class="chip${(S.stBank || '') === b ? ' on' : ''}" data-action="stm-bank" data-b="${esc(b)}">${b ? esc(b) : 'All'}</button>`).join('')}</div>`;
+  const dup = dn ? `<div class="stm-dup"><span>⚠️ ${dn} possible duplicate${dn === 1 ? '' : 's'} found</span><button class="btn xs primary" data-action="stm-dedupe">Clean up</button></div>` : '';
+  if (!S.stBank) return chips + dup + stmCal(all);
+  const list = all.filter(x => stLabel(x) === S.stBank).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const by = {}; list.forEach(x => { const k = (x.date || '').slice(0, 7); (by[k] = by[k] || []).push(x); });
+  return chips + dup + Object.keys(by).sort().reverse().map(k => `<div class="stm-m">${esc(mLong(k))}</div>` + by[k].map(stmCard).join('')).join('');
+}
+function renderCards(el) {
+  const cs = cards(), m = curYM();
+  const list = cs.map(c => ({ c, due: cardDue(c) || 0, spent: sum(D.txns.filter(t => t.cardId === c.id && t.type === 'expense' && t.date.startsWith(m) && !isFuture(t))) }));
+  const owed = sum(list, x => Math.max(0, x.due)), lim = sum(cs, c => +c.limit || 0), spent = sum(list, x => x.spent), util = lim ? owed / lim * 100 : 0;
+  const hero = cs.length ? `<div class="card cc-hero"><div class="sub">Total outstanding</div><div class="cc-big num">${fmt(owed)}</div>
+      ${lim ? `<div class="emi-prog"><i style="width:${clamp(util, 0, 100)}%;${util > 70 ? 'background:linear-gradient(90deg,#f59e0b,#f43f5e)' : ''}"></i></div>` : ''}
+      <div class="emi-meta"><span>${fmt(spent)} spent this month</span><span>${lim ? util.toFixed(0) + '% of ' + fmtC(lim) + ' limit' : cs.length + ' card' + (cs.length === 1 ? '' : 's')}</span></div></div>` : '';
+  const tiles = list.map(({ c, due, spent }, i) => {
+    const l = +c.limit || 0, u = l ? due / l * 100 : 0;
+    return `<div class="cc-tile" style="background:${CARD_GRADS[i % CARD_GRADS.length]}" data-action="acc-open" data-id="${esc(c.id)}">
+      <div class="cc-row"><b>${esc(c.name)}</b><span>${c.dueDay ? 'Bill on ' + ordinal(c.dueDay) : ''}</span></div>
+      <div class="cc-amt num">${due > 0 ? fmt(due) : due < 0 ? fmt(-due) + ' cr' : '₹0'}<small>${due > 0 ? 'outstanding' : 'all clear'}</small></div>
+      ${l ? `<div class="cc-bar"><i style="width:${clamp(u, 0, 100)}%"></i></div>` : ''}
+      <div class="cc-row sm"><span>${fmt(spent)} this month</span>${due > 0 ? `<button class="btn xs" data-action="pay-card" data-id="${esc(c.id)}">Pay bill</button>` : `<span>✓ Clear</span>`}</div></div>`;
+  }).join('');
+  el.innerHTML = `${hero}
+    ${cs.length ? `<div class="cc-tiles">${tiles}</div>` : `<div class="card">${emptyState('💳', 'Add your credit cards', 'Card spends add to dues right away; paying the bill moves money from your bank to the card.')}</div>`}
+    <button class="btn ghost block" style="margin:6px 0 14px" data-action="acc-add-card">+ Add credit card</button>
+    <div class="sec-title" id="stmtSec">Statements<span class="xs faint" style="font-weight:400;text-transform:none;letter-spacing:0"> · PDFs saved from email to Drive</span></div>
+    <div id="stmtBody">${stmtHtml()}</div>`;
+  if (CONFIG.MODE === 'sheets' && !Stmts.busy) { Stmts.busy = true; Stmts.refresh().then(() => { Stmts.busy = false; const b = $('#stmtBody'); if (S.tab === 'cards' && b) b.innerHTML = stmtHtml(); }); }
+}
 ACTIONS['settings'] = () => {
   const th = document.documentElement.dataset.theme;
   openSheet('Settings', `
@@ -2407,7 +2533,6 @@ ACTIONS['settings'] = () => {
       <div class="set-item"><span class="ic">🌓</span><span class="t">Theme</span><div class="seg" id="stTheme"><button data-v="dark" class="${th === 'dark' ? 'on' : ''}">Dark</button><button data-v="light" class="${th === 'light' ? 'on' : ''}">Light</button></div></div>
       <div class="set-item"><span class="ic">🎯</span><span class="t">Monthly budget<small>Expense limit per month</small></span><input class="inp" id="stBudget" inputmode="decimal" value="${D.settings.budget || ''}" placeholder="₹ 0"></div>
       <div class="set-item"><span class="ic">🛟</span><span class="t">Emergency fund<small>Target months of expenses</small></span><input class="inp" id="stEf" inputmode="numeric" value="${D.settings.efTarget}"></div>
-      <button class="set-item" data-action="statements"><span class="ic">📄</span><span class="t">Card statements<small>PDFs from email, stored in Drive</small></span>›</button>
       <button class="set-item" data-action="cat-manage"><span class="ic">🏷️</span><span class="t">Manage categories<small>${D.categories.expense.length} expense · ${D.categories.income.length} income</small></span>›</button>
     </div>
     ${CONFIG.MODE === 'sheets' ? `<div class="sec-title">Reminders<span class="xs faint" style="font-weight:400;text-transform:none;letter-spacing:0"> · sent as notifications to every device with Notifications on</span></div>
