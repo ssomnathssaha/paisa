@@ -106,12 +106,12 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 .rv-item{padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:10px}
 .rv-top{display:flex;align-items:center;gap:10px}.rv-ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--surface-2);flex:none}
 .rv-mid{flex:1;min-width:0;display:flex;flex-direction:column}.rv-mid b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rv-mid small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rv-amt{font-weight:800;white-space:nowrap}.rv-dup{font-size:12px;color:var(--warn);margin-top:8px}
+.rv-amt{font-weight:800;white-space:nowrap}.rv-dup{font-size:12px;color:var(--warn);margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}.rv-link{padding:9px 10px;font-size:13px}
 .rv-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.rv-acts .btn{padding:9px;min-height:0}
 .sp-chart{margin-top:14px}
 .sp-chart svg{display:block;width:100%;height:60px}
 .sp-chart rect{fill:#fff;opacity:.45}.sp-chart rect.on{opacity:.8}.sp-chart rect.tdy{opacity:1;fill:#fde68a}.sp-chart rect.fut{opacity:.15}
-.sp-chart rect[data-action]{cursor:pointer}
+.sp-chart rect[data-action]{cursor:pointer}.sp-chart rect.brk{fill:#4c1d95;opacity:.55}
 .sp-ax{display:flex;justify-content:space-between;font-size:10px;opacity:.7;margin-top:3px}
 .sp-strip{display:flex;height:8px;border-radius:99px;overflow:hidden;gap:1.5px;padding:1.5px;margin-top:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}
 .sp-strip i{display:block;min-width:4px;border-radius:99px}
@@ -686,7 +686,7 @@ const Store = {
       await sleep(700); // simulate network latency
       if (pw !== CONFIG.DEMO_PASSWORD) throw new Error('Incorrect password. Please try again.');
       let raw = null; try { raw = JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { /* ignore corrupt data */ }
-      D = migrate(raw || seed()); this.pw = pw; this.save(); Inbox.items = Inbox.demo(); return;
+      D = migrate(raw || seed()); this.pw = pw; this.save(); Inbox.items = Inbox.demo(); Stmts.items = Stmts.demo(); return;
     }
     let res = null, netErr = null, pend = null;
     try { res = await api('load', {}, pw); } catch (e) { if (e.code) throw e; netErr = e; }
@@ -800,6 +800,7 @@ async function api(action, payload = {}, pw = Store.pw) {
   finally { clearTimeout(to); }
   if (!j.ok) { const e = new Error(j.error || 'Request failed'); e.code = j.code || 'ERROR'; throw e; }
   if (action === 'load' && j.inbox) Inbox.setFromServer(j.inbox);
+  if (j.statements) Stmts.items = j.statements;
   return j;
 }
 
@@ -1505,10 +1506,12 @@ function spendHero(m) {
   const same = expOf(ptx.filter(t => +t.date.slice(8) <= dayN)), d = same ? (exp - same) / same * 100 : null;
   const daily = Array(dim).fill(0);
   tx.forEach(t => { if (t.type === 'expense') daily[+t.date.slice(8) - 1] += t.amount; });
-  const mx = Math.max(...daily, 1), H = 60;
+  // One huge day would flatten the rest, so the scale is capped near the typical day; taller bars are clipped and marked.
+  const nz = daily.filter(v => v > 0).sort((a, b) => a - b), peak = Math.max(...daily, 1), H = 60;
+  const mx = nz.length > 2 ? Math.min(peak, Math.max(nz[Math.floor((nz.length - 1) * .8)] * 1.6, 1)) : peak;
   const bars = daily.map((v, i) => {
-    const day = i + 1, ds = `${m}-${pad(day)}`, fut = day > dayN, h = v ? Math.max(4, v / mx * (H - 2)) : 2;
-    return `<rect x="${i * 10 + 1.5}" y="${H - h}" width="7" height="${h}" rx="2" class="${fut ? 'fut' : isCur && day === dayN ? 'tdy' : v ? 'on' : ''}"${fut ? '' : ` data-action="day" data-d="${ds}" data-tip="${shortDate(ds)}: ${fmt(v)}"`}/>`;
+    const day = i + 1, ds = `${m}-${pad(day)}`, fut = day > dayN, clip = v > mx * 1.01, h = v ? Math.max(4, Math.min(1, v / mx) * (H - 2)) : 2;
+    return `<rect x="${i * 10 + 1.5}" y="${H - h}" width="7" height="${h}" rx="2" class="${fut ? 'fut' : isCur && day === dayN ? 'tdy' : v ? 'on' : ''}"${fut ? '' : ` data-action="day" data-d="${ds}" data-tip="${shortDate(ds)}: ${fmt(v)}"`}/>${clip ? `<rect x="${i * 10 + 1.5}" y="${H - h + 5}" width="7" height="1.6" class="brk" pointer-events="none"/>` : ''}`;
   }).join('');
   const cats = catTotals(tx, 'expense'), top = cats.slice(0, 4), rest = exp - sum(top, c => c.value);
   const segs = [...top.map(c => ({ ...c })), ...(rest > 0 ? [{ name: 'Others', value: rest, color: '#cbd5e1', icon: '•' }] : [])];
@@ -1915,6 +1918,14 @@ ACTIONS['add'] = el => openTxForm(null, { date: el.dataset.date });
 ACTIONS['edit-tx'] = el => { const t = D.txns.find(x => x.id === el.dataset.id); if (t) t.type === 'transfer' ? payCardForm(null, t) : openTxForm(t); };
 
 /* ---------- bank email alerts → "To review" (parsed by Apps Script from Gmail; see SETUP.md) ---------- */
+const Stmts = {
+  items: [],
+  demo() { const d = n => { const x = new Date(); x.setMonth(x.getMonth() - n, 3); return dstr(x); };
+    return [{ id: 'd1', date: d(0), bank: 'HDFC', card: '4321', amount: 24567.5, minDue: 1230, dueDate: d(-1), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/' },
+      { id: 'd2', date: d(1), bank: 'HDFC', card: '4321', amount: 18890, minDue: 945, dueDate: d(0), name: 'HDFC card 4321 - statement.pdf', url: 'https://drive.google.com/' },
+      { id: 'd3', date: d(1), bank: 'Axis', card: '1234', amount: 5000, minDue: 250, dueDate: d(0), name: 'Axis card 1234 - statement.pdf', url: 'https://drive.google.com/' }]; },
+  async refresh() { try { const r = await api('statements'); if (r.statements) this.items = r.statements; } catch (e) { /* offline */ } }
+};
 const Inbox = {
   K: 'paisa_inbox_marks', items: [], at: 0, busy: false,
   marks() { try { return JSON.parse(localStorage.getItem(this.K)) || []; } catch (e) { return []; } },
@@ -1975,7 +1986,33 @@ function guessFor(it) {
   }
   return { category, method, cardId };
 }
-const maybeDup = it => D.txns.some(t => t.type === it.type && Math.abs(t.amount - it.amount) < 1 && Math.abs(parseD(t.date) - parseD(it.date)) <= 864e5);
+const similarTx = it => D.txns.find(t => !(t.tags || []).includes('bank-email') && Math.abs(t.amount - it.amount) < 1 && Math.abs(parseD(t.date) - parseD(it.date)) <= 864e5 && (t.type === it.type || t.type === 'transfer'));
+const isCardPay = it => /credit card (bill|payment|outstanding)|card (bill|payment)|\bcred\b|\bcc ?bill|payment (of|received).*card|towards.*card/i.test(String(it.merchant || '') + ' ' + String(it.snippet || ''));
+const txLabel = t => `${t.note || t.category || 'Entry'} · ${shortDate(t.date)} · ${fmtX(t.amount)}`;
+function recGuess(it) {
+  if (it.type !== 'expense') return '';
+  const n = learnKey(it.merchant), hit = D.recurring.filter(r => r.active !== false && r.type === it.type && Math.abs(r.amount - it.amount) < 1);
+  return (hit.find(r => n && (learnKey(r.name).includes(n) || n.includes(learnKey(r.name)))) || hit[0] || {}).id || '';
+}
+function linkOptions(it) {
+  const m = it.date.slice(0, 7), recs = D.recurring.filter(r => r.active !== false && r.type === it.type), cs = cards();
+  const guess = isCardPay(it) && cs.length ? 'c:' + (cs.find(c => learnKey(it.merchant + ' ' + it.snippet).includes(learnKey(c.name).split(' ')[0])) || cs[0]).id : (recGuess(it) ? 'r:' + recGuess(it) : '');
+  const o = v => `value="${esc(v)}"${v === guess ? ' selected' : ''}`;
+  return `<select class="inp rv-link" data-link="${esc(it.id)}"><option value="">No link — add as a new ${it.type}</option>
+    ${recs.length ? `<optgroup label="🔁 Recurring bill">${recs.map(r => `<option ${o('r:' + r.id)}>${esc(r.name)} · ${fmtC(r.amount)}${recTx(r, m) ? ' (already recorded)' : ''}</option>`).join('')}</optgroup>` : ''}
+    ${cs.length ? `<optgroup label="💳 Credit card bill payment (not an expense)">${cs.map(c => `<option ${o('c:' + c.id)}>Pay ${esc(c.name)} bill</option>`).join('')}</optgroup>` : ''}</select>`;
+}
+function mergeInto(it, t) {
+  const g = guessFor(it);
+  if (t.type !== 'transfer') {
+    if (it.merchant && !String(t.note || '').toLowerCase().includes(String(it.merchant).toLowerCase())) t.note = t.note ? t.note + ' · ' + it.merchant : it.merchant;
+    if (g.method) { t.method = g.method; if (g.method === 'Card' && g.cardId && !t.cardId && !serverOutdated()) t.cardId = g.cardId; }
+  }
+  t.tags = [...new Set([...(t.tags || []), 'bank-email'])];
+  Inbox.mark(it.id, 'added', t.id); Store.save();
+  toast('✓ Linked to existing entry'); render();
+  const b = $('#sheetBody'); if (Inbox.items.length && b && $('#sheetWrap').classList.contains('open')) reviewList(b); else closeSheet();
+}
 function reviewBanner() {
   const n = Inbox.items.length; if (!n) return '';
   const tot = sum(Inbox.items.filter(i => i.type === 'expense'), i => i.amount);
@@ -1984,34 +2021,58 @@ function reviewBanner() {
 function reviewList(body) {
   const items = Inbox.items;
   if (!items.length) { body.innerHTML = emptyState('✅', 'All caught up', 'New bank alerts from your email show up here automatically.'); return; }
-  body.innerHTML = `<p class="xs muted" style="margin:0 0 10px">Found in your bank alert emails. <b>Add</b> opens a pre-filled form; <b>Skip</b> ignores it.</p>
-    ${items.map(it => { const inc = it.type === 'income', dup = maybeDup(it); return `<div class="rv-item">
+  body.innerHTML = `<p class="xs muted" style="margin:0 0 10px">Found in your bank alert emails. <b>Add</b> records it (use <i>Link to</i> to tie it to a recurring bill or a card bill payment); <b>Skip</b> ignores it.</p>
+    ${items.map(it => { const inc = it.type === 'income', sim = similarTx(it); return `<div class="rv-item">
       <div class="rv-top"><span class="rv-ic ${inc ? 'pos' : 'neg'}">${inc ? '↓' : '↑'}</span>
         <span class="rv-mid"><b>${esc(it.merchant || (inc ? 'Money received' : 'Payment'))}</b><small>${esc(it.bank || 'Bank')}${it.acct ? ' ••' + esc(it.acct) : ''} · ${methodIcon(it.method)} ${esc(it.method || '')} · ${shortDate(it.date)}</small></span>
         <span class="rv-amt ${inc ? 'pos' : 'neg'}">${inc ? '+' : '−'}${fmtX(it.amount)}</span></div>
-      ${dup ? '<div class="rv-dup">⚠️ A similar entry already exists — maybe added manually?</div>' : ''}
+      ${sim ? `<div class="rv-dup">⚠️ Similar entry exists: <b>${esc(txLabel(sim))}</b><button class="btn xs ghost" data-same="${esc(it.id)}" data-tx="${esc(sim.id)}">Same — link them</button></div>` : ''}
+      <label class="lbl" style="margin:10px 0 4px">Link to</label>${linkOptions(it)}
       <div class="rv-acts"><button class="btn ghost" data-skip="${esc(it.id)}">Skip</button><button class="btn t-${it.type}" data-addrv="${esc(it.id)}">Add</button></div></div>`; }).join('')}
     ${items.length > 1 ? '<button class="btn danger-ghost block" style="margin-top:6px" data-skipall>Skip all</button>' : ''}`;
   body.querySelectorAll('[data-skip]').forEach(b => b.onclick = () => { Inbox.mark(b.dataset.skip, 'skipped'); reviewList(body); render(); });
-  body.querySelectorAll('[data-addrv]').forEach(b => b.onclick = () => reviewAdd(items.find(i => i.id === b.dataset.addrv)));
+  body.querySelectorAll('[data-same]').forEach(b => b.onclick = async () => {
+    const it = items.find(i => i.id === b.dataset.same), t = D.txns.find(x => x.id === b.dataset.tx); if (!it || !t) return;
+    if (await confirmDlg('Link to existing entry?', `${txLabel(t)} will be linked to this bank alert${t.type === 'transfer' ? '' : ' and get its details (merchant, payment method)'}. No new entry is created.`, 'Link')) mergeInto(it, t);
+  });
+  body.querySelectorAll('[data-addrv]').forEach(b => b.onclick = () => {
+    const it = items.find(i => i.id === b.dataset.addrv), sel = body.querySelector(`[data-link="${CSS.escape(b.dataset.addrv)}"]`);
+    reviewAdd(it, sel ? sel.value : '');
+  });
   const all = body.querySelector('[data-skipall]');
   if (all) all.onclick = async () => {
     if (!await confirmDlg('Skip all?', `${items.length} bank alerts will be ignored.`, 'Skip all')) return;
     [...items].forEach(i => Inbox.mark(i.id, 'skipped')); reviewList(body); render();
   };
 }
-function reviewAdd(it) {
+const reviewNext = () => { if (Inbox.items.length) setTimeout(() => ACTIONS['review'](), 450); };
+async function reviewAdd(it, link) {
   if (!it) return;
+  const [kind, id] = String(link || '').split(':');
+  if (kind === 'c') {
+    const froms = payFromAccounts(), bk = String(it.bank || '').toLowerCase().split(' ')[0];
+    const from = it.type === 'expense' ? (froms.find(a => bk && a.name.toLowerCase().includes(bk)) || froms.find(a => a.id === D.settings.payFrom) || froms[0] || {}).id : '';
+    payCardForm(id, null, { amount: it.amount, date: it.date, fromId: from, note: it.merchant, tags: ['card-bill', 'bank-email'], onSave: rec => { Inbox.mark(it.id, 'added', rec.id); reviewNext(); } });
+    return;
+  }
+  if (kind === 'r') {
+    const r = D.recurring.find(x => x.id === id), ex = r && recTx(r, it.date.slice(0, 7));
+    if (ex) { if (await confirmDlg('Already recorded', `${r.name} is already recorded for this month (${txLabel(ex)}). Link this alert to that entry instead?`, 'Link')) mergeInto(it, ex); return; }
+    if (r) return reviewForm(it, { category: r.category, tags: [...(r.tags || []), 'bank-email'], note: r.name + (it.merchant ? ' · ' + it.merchant : ''), recurId: r.id });
+  }
+  reviewForm(it, {});
+}
+function reviewForm(it, ex) {
   const g = guessFor(it);
   openTxForm(null, {
-    title: 'Review bank transaction', type: it.type, amount: it.amount, date: it.date, note: it.merchant, category: g.category, method: g.method, cardId: g.cardId,
+    title: 'Review bank transaction', type: it.type, amount: it.amount, date: it.date, note: ex.note || it.merchant, category: ex.category || g.category, method: g.method, cardId: g.cardId, tags: ex.tags || ['bank-email'],
     onSave: rec => {
+      if (ex.recurId) rec.recurId = ex.recurId;
       const L = D.settings.learn = D.settings.learn || {}; L.m = L.m || {}; L.c = L.c || {};
-      if (learnKey(it.merchant)) { delete L.m[learnKey(it.merchant)]; L.m[learnKey(it.merchant)] = rec.category; }
+      if (learnKey(it.merchant) && !ex.recurId) { delete L.m[learnKey(it.merchant)]; L.m[learnKey(it.merchant)] = rec.category; }
       const keys = Object.keys(L.m); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(k => delete L.m[k]);
       if (rec.cardId && it.bank) L.c[it.bank + '|' + it.acct] = rec.cardId;
-      Inbox.mark(it.id, 'added', rec.id);
-      if (Inbox.items.length) setTimeout(() => ACTIONS['review'](), 450);
+      Inbox.mark(it.id, 'added', rec.id); reviewNext();
     },
   });
 }
@@ -2274,14 +2335,15 @@ function cardsCard(full) {
       ${lim ? `<div class="emi-prog"><i style="width:${clamp(util, 0, 100)}%;${util > 70 ? 'background:linear-gradient(90deg,#f59e0b,#f43f5e)' : ''}"></i></div><div class="emi-meta"><span>${util.toFixed(0)}% of ${fmtC(lim)} limit used</span><span>${fmtC(Math.max(0, lim - due))} available</span></div>` : ''}</div>`;
   }).join('');
   return `<div class="card"><div class="card-h"><div><h3>💳 Credit card dues</h3><div class="sub">Live · card spends add, bill payments reduce</div></div><span class="neg num" style="font-weight:700">${fmt(total)}</span></div>${rows}
+    <button class="btn ghost block" style="margin-top:10px" data-action="statements">📄 Card statements</button>
     ${full ? '<button class="btn ghost block" style="margin-top:10px" data-action="acc-add-card">+ Add credit card</button>' : ''}</div>`;
 }
-function payCardForm(cardId, t) {
+function payCardForm(cardId, t, pre) {
   if (serverOutdated()) { toast('⚠️ Update your Apps Script (Code.gs) first — see SETUP.md'); return; }
   const cs = cards(), froms = payFromAccounts();
   if (!cs.length) { toast('Add a credit card first'); return; }
   const f = t ? { toId: t.toId, fromId: t.fromId, amount: t.amount, date: t.date, note: t.note || '' }
-    : { toId: cardId || defaultCardId(), fromId: (froms.find(a => a.id === D.settings.payFrom) || froms[0] || {}).id || '', amount: null, date: today(), note: '' };
+    : { toId: cardId || defaultCardId(), fromId: (pre && pre.fromId) || (froms.find(a => a.id === D.settings.payFrom) || froms[0] || {}).id || '', amount: pre && pre.amount || null, date: pre && pre.date || today(), note: pre && pre.note || '' };
   openSheet(t ? 'Edit card payment' : 'Pay card bill', '', function draw(body) {
     const card = accById(f.toId) || cs[0], now = cardDue(card) || 0;
     const dueBefore = t && t.toId === card.id && !isFuture(t) ? now + t.amount : now;
@@ -2306,9 +2368,9 @@ function payCardForm(cardId, t) {
       if (!f.fromId) { toast('Add a bank account to pay from'); return; }
       if (!f.date) { toast('Pick a date'); return; }
       const from = accById(f.fromId), rec = { ...(t || {}), id: t ? t.id : uid(), type: 'transfer', amount: f.amount, category: 'Card payment', date: f.date, method: 'Bank Transfer',
-        note: f.note || `${card.name} bill`, tags: t ? t.tags || [] : ['card-bill'], fromId: f.fromId, toId: card.id, ts: t ? t.ts : Date.now() };
+        note: f.note || `${card.name} bill`, tags: t ? t.tags || [] : (pre && pre.tags) || ['card-bill'], fromId: f.fromId, toId: card.id, ts: t ? t.ts : Date.now() };
       if (t) D.txns[D.txns.findIndex(x => x.id === t.id)] = rec; else D.txns.push(rec);
-      D.settings.payFrom = f.fromId; Store.save(); closeSheet(); render();
+      D.settings.payFrom = f.fromId; if (pre && pre.onSave) pre.onSave(rec); Store.save(); closeSheet(); render();
       const msg = `${f.date > today() ? '⏳ Scheduled' : '✓ Paid'} ${fmt(f.amount)} to ${card.name} from ${from ? from.name : 'bank'}`;
       if (t) toast(msg); else toast(msg, 'Undo', () => { D.txns = D.txns.filter(x => x.id !== rec.id); Store.save(); render(); });
     };
@@ -2322,6 +2384,21 @@ ACTIONS['pay-card'] = el => payCardForm(el.dataset.id);
 
 /* ================= SETTINGS ================= */
 const hourOpts = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${+sel === h ? ' selected' : ''}>${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}</option>`).join('');
+document.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) window.open(b.dataset.open, '_blank', 'noopener'); });
+ACTIONS['statements'] = () => {
+  const body = () => {
+    if (CONFIG.MODE === 'sheets' && serverOutdated()) return '<p class="muted sm">Update your Apps Script (Code.gs, see SETUP.md) to turn on card statements.</p>';
+    if (!Stmts.items.length) return emptyState('📄', 'No statements yet', 'Card statement emails with a PDF are saved to Google Drive automatically (checked every 30 min). In the sheet menu run Paisa → Import card statements now.');
+    const by = {}; Stmts.items.forEach(x => { const k = (x.date || '').slice(0, 7); (by[k] = by[k] || []).push(x); });
+    return Object.keys(by).sort().reverse().map(k => `<div class="sec-title">${esc(new Date(k + '-01T00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }))}</div><div class="set-group">${by[k].map(x => `
+      <button class="set-item" data-open="${esc(x.url)}"><span class="ic">📄</span><span class="t">${esc(x.bank)} card${x.card ? ' ••' + esc(x.card) : ''}<small>${x.amount ? 'Total due ' + fmt(x.amount) : 'Statement'}${x.minDue ? ' · min ' + fmt(x.minDue) : ''}${x.dueDate ? ' · due ' + esc(x.dueDate) : ''}</small></span>›</button>`).join('')}</div>`).join('');
+  };
+  openSheet('Card statements', '', el => {
+    const root = el || document.getElementById('sheetBody') || document.querySelector('.sheet .body');
+    if (root) { root.innerHTML = body(); }
+    if (CONFIG.MODE === 'sheets') Stmts.refresh().then(() => { if (root && root.isConnected) root.innerHTML = body(); });
+  });
+};
 ACTIONS['settings'] = () => {
   const th = document.documentElement.dataset.theme;
   openSheet('Settings', `
@@ -2330,6 +2407,7 @@ ACTIONS['settings'] = () => {
       <div class="set-item"><span class="ic">🌓</span><span class="t">Theme</span><div class="seg" id="stTheme"><button data-v="dark" class="${th === 'dark' ? 'on' : ''}">Dark</button><button data-v="light" class="${th === 'light' ? 'on' : ''}">Light</button></div></div>
       <div class="set-item"><span class="ic">🎯</span><span class="t">Monthly budget<small>Expense limit per month</small></span><input class="inp" id="stBudget" inputmode="decimal" value="${D.settings.budget || ''}" placeholder="₹ 0"></div>
       <div class="set-item"><span class="ic">🛟</span><span class="t">Emergency fund<small>Target months of expenses</small></span><input class="inp" id="stEf" inputmode="numeric" value="${D.settings.efTarget}"></div>
+      <button class="set-item" data-action="statements"><span class="ic">📄</span><span class="t">Card statements<small>PDFs from email, stored in Drive</small></span>›</button>
       <button class="set-item" data-action="cat-manage"><span class="ic">🏷️</span><span class="t">Manage categories<small>${D.categories.expense.length} expense · ${D.categories.income.length} income</small></span>›</button>
     </div>
     ${CONFIG.MODE === 'sheets' ? `<div class="sec-title">Reminders<span class="xs faint" style="font-weight:400;text-transform:none;letter-spacing:0"> · sent as notifications to every device with Notifications on</span></div>
