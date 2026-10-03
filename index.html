@@ -67,7 +67,12 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .pw-field .eye{position:absolute;right:8px;top:8px;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:var(--muted)}
 .lock-err{color:var(--expense);font-size:13px;min-height:20px;margin-top:10px}
 .bio-btn{margin-top:12px;width:100%}
+.mask{-webkit-text-security:disc;text-security:disc}
 .lock-hint{margin-top:22px;font-size:12px;color:var(--faint)}
+.demo-link{display:block;margin:14px auto 0;background:none;border:0;color:var(--faint);font:inherit;font-size:12px;text-decoration:underline;padding:6px 10px;cursor:pointer}
+.demo-bar{position:fixed;top:0;left:0;right:0;z-index:60;background:#f59e0b;color:#1f1300;font-size:12px;font-weight:700;text-align:center;padding:calc(3px + env(safe-area-inset-top)) 8px 3px;display:flex;justify-content:center;gap:10px;align-items:center}
+.demo-bar button{background:#1f1300;color:#fff;border:0;border-radius:99px;font:inherit;font-size:11px;padding:2px 10px}
+.demo-on #app{padding-top:24px}
 .lock-hint code{background:var(--surface-2);padding:2px 7px;border-radius:6px;color:var(--muted)}
 .shake{animation:shake .42s}
 @keyframes shake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
@@ -480,6 +485,17 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
 .cal-k{display:flex;gap:14px;font-size:11.5px;color:var(--faint);margin-top:8px;justify-content:center}
 .stm-act{display:flex;gap:8px}.stm-act .btn:first-child{flex:1}
 .stm-dup{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(245,158,11,.14);color:var(--warn);font-size:13px;font-weight:600;margin-bottom:10px}
+.cal-d.has{color:#fff;font-weight:800;box-shadow:0 4px 12px -4px rgba(0,0,0,.45)}.cal-d.has span{text-shadow:0 1px 2px rgba(0,0,0,.45)}.cal-d.has.sel{outline:2.5px solid var(--text);outline-offset:1px}
+.cal-w,.cal-g{grid-template-columns:repeat(7,minmax(0,1fr))}.cal-g{gap:4px}.cal-d{margin:0;width:100%;min-width:0;max-width:100%}.cal-k{flex-wrap:wrap;gap:6px 14px}
+.stm{position:relative;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 6px 16px -12px rgba(0,0,0,.5)}
+.stm-head{display:flex;align-items:center;gap:12px;width:100%;padding:12px 12px 12px 10px;text-align:left}
+.stm-ic{flex:none;width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-weight:800;font-size:13px;color:#fff;background:var(--c)}
+.stm-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.stm-mid b{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stm-mid small,.stm-r small{font-size:11.5px;color:var(--faint)}
+.stm-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px}.stm-r b{font-size:15.5px}
+.stm-chev{color:var(--faint);font-size:20px;transition:transform .2s}.stm.open .stm-chev{transform:rotate(90deg)}
+.stm-body{padding:2px 14px 14px;border-top:1px dashed var(--line);margin-top:0;padding-top:12px}
+.stm-sep{height:1px;background:var(--line);margin:0 0 10px}
+.stm-m{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:18px 2px 10px}.stm-m::after{content:"";flex:1;height:1px;background:var(--line)}
 </style>
 </head>
 <body>
@@ -493,13 +509,14 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
     <p class="sub">Your money, beautifully tracked.</p>
     <div class="pw-field" id="pwField">
       <svg class="i lk" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-      <input type="password" id="pwInput" placeholder="Enter password" autocomplete="current-password" aria-label="Password">
+      <input type="text" id="pwInput" class="mask" placeholder="Enter password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" aria-label="Password">
       <button type="button" class="eye" id="pwEye" aria-label="Show password"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
     <button class="btn primary block" id="unlockBtn" type="submit">Unlock</button>
     <button class="btn block bio-btn" id="bioBtn" type="button" hidden>👆 Unlock with fingerprint</button>
     <div class="lock-err" id="lockErr"></div>
     <div class="lock-hint" id="lockHint"></div>
+    <button type="button" class="demo-link" id="demoLink">Demo mode</button>
   </form>
 </div>
 
@@ -530,8 +547,8 @@ body.has-syncbar .toast{bottom:calc(160px + env(safe-area-inset-bottom))}
   <nav class="tabbar">
     <button class="tab on" data-tab="home"><svg class="i" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg>Home</button>
     <button class="tab" data-tab="txns"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r=".6"/><circle cx="3.5" cy="12" r=".6"/><circle cx="3.5" cy="18" r=".6"/></svg>Activity</button>
+    <button class="tab" data-tab="cards"><svg class="i" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></svg>Credit Cards</button>
     <button class="tab" data-tab="dash"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-7"/></svg>Insights</button>
-    <button class="tab" data-tab="cards"><svg class="i" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/></svg>Cards</button>
     <button class="tab" data-tab="worth"><svg class="i" viewBox="0 0 24 24"><path d="M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-2"/><path d="M22 11h-5a2 2 0 0 0 0 4h5z"/></svg>Net Worth</button>
   </nav>
   <button class="fab" data-action="add" aria-label="Add transaction"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -560,11 +577,14 @@ const CONFIG = {
   DEMO_PASSWORD: '1234',    // Only used in local demo mode
   // Firebase Web App config + Web Push key (see SETUP.md → Push notifications). Leave apiKey empty to hide the feature.
   FIREBASE: { apiKey: 'AIzaSyBi5B9mDhz2bKkxdx0J-Q5BwwoDgLQ_d1A', authDomain: 'paisa-a2845.firebaseapp.com', projectId: 'paisa-a2845', storageBucket: 'paisa-a2845.firebasestorage.app', messagingSenderId: '374937278543', appId: '1:374937278543:web:e9ad71a0323e73a839b23a', vapidKey: 'BIMT_b2Bpzl1NzTmC6WOBxbnyZbGudsg_b1_g45hAt7jWZxWOfuV5bBEdTosgYhDiQF-ylzfOwpL1w8fYCYq21M' },
-  AUTO_LOCK_MIN: 10,        // Auto-lock after inactivity / app in background
+  LOCK_DEFAULT_MIN: 5,      // Default sign-out after this many minutes of inactivity (user can change in Settings)
+  LOCK_OPTIONS: [[0, 'Immediately'], [5, '5 minutes'], [30, '30 minutes'], [1440, '1 day'], [10080, '7 days']],
+  get AUTO_LOCK_MIN() { const v = parseInt(localStorage.getItem('paisa_lock'), 10); return v >= 0 ? v : this.LOCK_DEFAULT_MIN; },
   SYNC_RETRY_SEC: 15,       // Retry interval when the Google Sheet can't be reached
-  get MODE() { return this.APPS_SCRIPT_URL ? 'sheets' : 'local'; },
+  get MODE() { return this.APPS_SCRIPT_URL && !Demo.on ? 'sheets' : 'local'; },
 };
 const DB_KEY = 'paisa_db_v1';
+const Demo = { on: false }; // runtime-only: dummy data, in memory, no network, nothing saved
 const THEME_KEY = 'paisa_theme';
 
 /* ---------- utils ---------- */
@@ -707,7 +727,8 @@ const Store = {
   pw: null, rev: null, base: null, sheetUrl: '', notice: '', serverVer: 2,
   async unlock(pw) {
     if (CONFIG.MODE !== 'sheets') {
-      await sleep(700); // simulate network latency
+      await sleep(Demo.on ? 300 : 700); // simulate network latency
+      if (Demo.on) { D = migrate(seed()); this.pw = 'demo'; Inbox.items = Inbox.demo(); Stmts.items = Stmts.demo(); return; }
       if (pw !== CONFIG.DEMO_PASSWORD) throw new Error('Incorrect password. Please try again.');
       let raw = null; try { raw = JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { /* ignore corrupt data */ }
       D = migrate(raw || seed()); this.pw = pw; this.save(); Inbox.items = Inbox.demo(); Stmts.items = Stmts.demo(); return;
@@ -740,6 +761,7 @@ const Store = {
   },
   save() {
     if (!D) return;
+    if (Demo.on) return;
     if (CONFIG.MODE !== 'sheets') { try { localStorage.setItem(DB_KEY, JSON.stringify(D)); } catch (e) { toast('⚠️ Could not save locally'); } return; }
     Sync.n++; Sync.dirty = true; if (!Sync.since) Sync.since = Date.now();
     this.persist();
@@ -1394,6 +1416,36 @@ const Bio = {
   }
 };
 let lastPw = '';
+/* stay signed in: password encrypted with a non-extractable key kept in IndexedDB, with an expiry */
+const Sess = {
+  K: 'paisa.sess.v1',
+  db() { return new Promise((res, rej) => { const r = indexedDB.open('paisa-sess', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async kv(mode, fn) { const db = await this.db(); return new Promise((res, rej) => { const t = db.transaction('k', mode), q = fn(t.objectStore('k')); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); },
+  async save(pw) {
+    if (!CONFIG.AUTO_LOCK_MIN || !window.crypto || !crypto.subtle || !window.indexedDB) return;
+    try {
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']), iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(pw));
+      await this.kv('readwrite', st => st.put({ key, iv, ct, exp: Date.now() + CONFIG.AUTO_LOCK_MIN * 60e3 }, 'sess'));
+    } catch (e) { /* not available: user just logs in again */ }
+  },
+  async load() {
+    try {
+      const r = await this.kv('readonly', st => st.get('sess'));
+      if (!r || r.exp < Date.now()) { if (r) this.clear(); return ''; }
+      return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: r.iv }, r.key, r.ct));
+    } catch (e) { return ''; }
+  },
+  async touch() { try { const r = await this.kv('readonly', st => st.get('sess')); if (r && CONFIG.AUTO_LOCK_MIN) { r.exp = Date.now() + CONFIG.AUTO_LOCK_MIN * 60e3; await this.kv('readwrite', st => st.put(r, 'sess')); } } catch (e) { /* ignore */ } },
+  async clear() { try { await this.kv('readwrite', st => st.delete('sess')); } catch (e) { /* ignore */ } },
+};
+let resuming = false;
+function setDemoUI(on) {
+  document.body.classList.toggle('demo-on', on);
+  let b = $('#demoBar');
+  if (on && !b) { b = document.createElement('div'); b.id = 'demoBar'; b.className = 'demo-bar'; b.innerHTML = 'DEMO MODE · dummy data <button data-action="lock">Exit</button>'; document.body.appendChild(b); }
+  if (!on && b) b.remove();
+}
 async function refreshBio() { $('#bioBtn').hidden = !(Bio.enabled() && Bio.supported()); }
 $('#bioBtn').addEventListener('click', async () => {
   const err = $('#lockErr');
@@ -1403,6 +1455,7 @@ $('#bioBtn').addEventListener('click', async () => {
 ACTIONS['bio-toggle'] = async () => {
   if (Bio.enabled()) { await Bio.disable(); toast('Fingerprint unlock turned off'); closeSheet(); return; }
   if (!(await Bio.available())) { toast('Fingerprint unlock needs HTTPS and a screen lock/fingerprint set on this device'); return; }
+  if (Demo.on) { toast('Not available in demo mode'); return; }
   if (!lastPw) { toast('Lock the app and log in with your password once, then enable this'); return; }
   try { await Bio.enable(lastPw); toast('Fingerprint unlock enabled ✓'); closeSheet(); }
   catch (e) { toast('Could not enable fingerprint unlock'); }
@@ -1417,8 +1470,12 @@ function lockHint() {
     : p ? `☁️ ${p.n || 'Some'} unsynced change${p.n === 1 ? '' : 's'} saved on this device — they'll sync after you unlock` : '🔒 Secured by Google Apps Script';
 }
 lockHint();
-setTimeout(() => { if (Bio.enabled() && Bio.supported()) $('#bioBtn').click(); }, 500);
-$('#pwEye').addEventListener('click', () => { const i = $('#pwInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
+$('#demoLink').addEventListener('click', () => { Demo.on = true; $('#pwInput').value = 'demo'; $('#lockForm').requestSubmit(); });
+if (CONFIG.AUTO_LOCK_MIN) {
+  resuming = true;
+  Sess.load().then(pw => { resuming = false; if (pw) { $('#pwInput').value = pw; $('#lockForm').requestSubmit(); } else if (Bio.enabled() && Bio.supported()) $('#bioBtn').click(); });
+} else setTimeout(() => { if (Bio.enabled() && Bio.supported()) $('#bioBtn').click(); }, 500);
+$('#pwEye').addEventListener('click', () => { const i = $('#pwInput'); i.classList.toggle('mask'); i.focus(); });
 $('#lockForm').addEventListener('submit', async e => {
   e.preventDefault();
   const pw = $('#pwInput').value, btn = $('#unlockBtn'), err = $('#lockErr');
@@ -1426,13 +1483,15 @@ $('#lockForm').addEventListener('submit', async e => {
   err.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Unlocking…';
   try {
     await Store.unlock(pw);
-    lastPw = pw;
+    lastPw = pw; setDemoUI(Demo.on);
+    if (!Demo.on) Sess.save(pw);
     $('#pwInput').value = ''; $('#pwInput').blur();
     S.month = curYM(); $('#app').hidden = false; $('#lock').classList.add('out');
     lastActive = Date.now(); setTab('home'); setSync();
     if (Store.notice) { toast(Store.notice, 'OK', () => {}); Store.notice = ''; }
     if (intent) runIntent();
   } catch (ex) {
+    Demo.on = false; if (ex && ex.code) Sess.clear();
     err.textContent = ex.message || 'Unable to unlock';
     const c = $('#pwField'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
     $('#pwInput').select();
@@ -1440,7 +1499,7 @@ $('#lockForm').addEventListener('submit', async e => {
 });
 function lockApp(msg) {
   const pending = CONFIG.MODE === 'sheets' ? Sync.n : 0;
-  closeSheet(); Store.lock(); lastPw = ''; refreshBio();
+  closeSheet(); Store.lock(); lastPw = ''; Demo.on = false; setDemoUI(false); Sess.clear(); refreshBio();
   $$('main .view').forEach(v => v.innerHTML = '');
   $('#app').hidden = true; $('#lock').classList.remove('out');
   $('#lockErr').textContent = (msg || '') + (pending ? `${msg ? ' · ' : ''}${pending} unsynced change${pending === 1 ? ' is' : 's are'} kept on this device.` : '');
@@ -1451,11 +1510,21 @@ ACTIONS['lock'] = () => lockApp();
 let lastActive = Date.now(), hiddenAt = 0;
 ['pointerdown', 'keydown', 'scroll'].forEach(ev => addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true }));
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) hiddenAt = Date.now();
-  else if (D && hiddenAt && Date.now() - hiddenAt > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒');
+  if (document.hidden) { hiddenAt = Date.now(); if (D && !Demo.on) Sess.touch(); }
+  else if (D && hiddenAt && Date.now() - hiddenAt >= CONFIG.AUTO_LOCK_MIN * 60e3 && !(CONFIG.AUTO_LOCK_MIN === 0 && Date.now() - hiddenAt < 1500)) lockApp('Locked after inactivity 🔒');
   else if (D && Date.now() - Inbox.at > 5 * 60e3) Inbox.refresh().then(n => { if (n && D && ['home', 'txns'].includes(S.tab) && !$('#sheetWrap').classList.contains('open')) render(); });
 });
-setInterval(() => { if (D && Date.now() - lastActive > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒'); }, 30e3);
+setInterval(() => {
+  if (!D) return;
+  if (CONFIG.AUTO_LOCK_MIN && Date.now() - lastActive > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒');
+  else if (!Demo.on && Date.now() - lastActive < 30e3) Sess.touch();
+}, 30e3);
+ACTIONS['lock-pref'] = () => openSheet('Auto sign-out', `<div class="set-group">${CONFIG.LOCK_OPTIONS.map(([m, l]) => `<button class="set-item" data-action="lock-set" data-m="${m}"><span class="t">${l}${m === CONFIG.AUTO_LOCK_MIN ? ' ✓' : ''}<small>${m ? 'Sign out after ' + l + ' of inactivity' : 'Ask for password whenever you leave or reload the app'}</small></span></button>`).join('')}</div>`);
+ACTIONS['lock-set'] = el => {
+  const m = parseInt(el.dataset.m, 10); localStorage.setItem('paisa_lock', m);
+  if (m && lastPw && !Demo.on) Sess.save(lastPw); else Sess.clear();
+  lastActive = Date.now(); closeSheet(); toast('Auto sign-out: ' + (CONFIG.LOCK_OPTIONS.find(o => o[0] === m) || [0, m])[1]);
+};
 </script>
 
 <!-- ===================== SCRIPT 3/5: Home (current month) & Activity views ===================== -->
@@ -2433,24 +2502,34 @@ function duePill(d) {
 const StPw = {
   K: 'paisa_stpw',
   all() { try { return JSON.parse(localStorage.getItem(this.K)) || {}; } catch (e) { return {}; } },
-  get(k) { return this.all()[k] || ''; },
-  set(k, v) { const a = this.all(); if (v) a[k] = v; else delete a[k]; localStorage.setItem(this.K, JSON.stringify(a)); }
+  mem: {},
+  get(k) { return (Demo.on ? this.mem : this.all())[k] || ''; },
+  set(k, v) { if (Demo.on) { this.mem[k] = v; return; } const a = this.all(); if (v) a[k] = v; else delete a[k]; localStorage.setItem(this.K, JSON.stringify(a)); }
 };
 const stLabel = x => x.product || x.bank || 'Card';
 function stmCard(x) {
-  const k = stLabel(x), pw = StPw.get(k);
-  return `<div class="stm">
-      <div class="stm-top"><span class="stm-bank">${esc(k)}</span>${x.card ? `<span class="stm-card">•••• ${esc(x.card)}</span>` : ''}<span class="stm-dt">📧 ${shortD(x.date, true)}</span></div>
+  const k = stLabel(x), pw = StPw.get(k), c = stColor(k), open = (S.stOpen || (S.stOpen = {}))[x.id], ini = k.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  return `<div class="stm${open ? ' open' : ''}" style="--c:${c}">
+    <button class="stm-head" data-action="stm-tog" data-id="${esc(x.id)}">
+      <span class="stm-ic">${esc(ini)}</span>
+      <span class="stm-mid"><b>${esc(k)}</b><small>${x.card ? '•••• ' + esc(x.card) + ' · ' : ''}📧 ${shortD(x.date, true)}</small></span>
+      <span class="stm-r"><b class="num">${x.amount ? fmt(x.amount) : '—'}</b><small>${x.dueDate ? 'due ' + shortD(x.dueDate) : ''}</small></span>
+      <span class="stm-chev">›</span>
+    </button>
+    ${open ? `<div class="stm-body">
       <div class="stm-grid">
         <div><small>Total due</small><b class="num">${x.amount ? fmt(x.amount) : '—'}</b></div>
         <div><small>Min due</small><b class="num">${x.minDue ? fmt(x.minDue) : '—'}</b></div>
-        <div><small>Pay by</small><b>${shortD(x.dueDate)}</b>${duePill(x.dueDate)}</div>
+        <div><small>Pay by</small><b>${shortD(x.dueDate, true)}</b>${duePill(x.dueDate)}</div>
       </div>
+      <div class="stm-sep"></div>
       <div class="stm-pw"><span>🔑</span><div>${x.pwHint ? esc(x.pwHint) : '<span class="faint">No password hint in this email — most banks use part of your name + date of birth or PAN.</span>'}</div></div>
-      <div class="stm-pwi"><input class="inp" type="password" autocomplete="off" data-pwkey="${esc(k)}" value="${esc(pw)}" placeholder="Type PDF password to save for ${esc(k)}"><button class="btn xs ghost" data-action="stm-eye" aria-label="Show">👁</button><button class="btn xs ghost" data-action="stm-copy">Copy</button></div>
+      <div class="stm-pwi"><input class="inp mask" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore data-pwkey="${esc(k)}" value="${esc(pw)}" placeholder="Type PDF password to save for ${esc(k)}"><button class="btn xs ghost" data-action="stm-eye" aria-label="Show">👁</button><button class="btn xs ghost" data-action="stm-copy">Copy</button></div>
       <div class="stm-act"><button class="btn primary" data-open="${esc(x.url)}">📄 Open PDF</button><button class="btn ghost" data-action="stm-edit" data-id="${esc(x.id)}">✏️ Edit</button></div>
-    </div>`;
+    </div>` : ''}
+  </div>`;
 }
+ACTIONS['stm-tog'] = el => { S.stOpen = S.stOpen || {}; S.stOpen[el.dataset.id] = !S.stOpen[el.dataset.id]; refreshStm(); };
 ACTIONS['stm-edit'] = el => {
   const x = Stmts.items.find(i => i.id === el.dataset.id); if (!x) return;
   const f = (id, label, v, extra = '') => `<div><label class="lbl">${label}</label><input class="inp" id="${id}" value="${esc(String(v ?? ''))}" ${extra}></div>`;
@@ -2469,27 +2548,30 @@ ACTIONS['stm-edit'] = el => {
   });
 };
 ACTIONS['stm-dedupe'] = async () => { const d = Stmts.dupes(); if (!d.length || !await confirmDlg('Hide duplicates?', d.length + ' duplicate statement' + (d.length === 1 ? '' : 's') + ' will be hidden; the best-labelled copy is kept.', 'Hide')) return; for (const x of d) await Stmts.save(x.id, { hidden: true }); render(); toast('Duplicates hidden'); };
-ACTIONS['stm-eye'] = el => { const i = el.parentNode.querySelector('input'); i.type = i.type === 'password' ? 'text' : 'password'; };
+ACTIONS['stm-eye'] = el => { const i = el.parentNode.querySelector('input'); i.classList.toggle('mask'); };
 ACTIONS['stm-copy'] = el => { const v = el.parentNode.querySelector('input').value; if (!v) return toast('Type the password first'); (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Password copied'), () => toast('Could not copy')); };
 document.addEventListener('input', e => { const i = e.target.closest && e.target.closest('[data-pwkey]'); if (!i) return; StPw.set(i.dataset.pwkey, i.value); document.querySelectorAll('[data-pwkey]').forEach(o => { if (o !== i && o.dataset.pwkey === i.dataset.pwkey) o.value = i.value; }); });
 ACTIONS['stm-cal'] = el => { S.stCal = addMonths(S.stCal || curYM(), +el.dataset.n); S.stDay = ''; refreshStm(); };
 ACTIONS['stm-day'] = el => { S.stDay = S.stDay === el.dataset.d ? '' : el.dataset.d; refreshStm(); };
 function refreshStm() { const b = $('#stmtBody'); if (b && S.tab === 'cards') b.innerHTML = stmtHtml(); }
+const ST_COLORS = ['#8b5cf6', '#ec4899', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#14b8a6', '#6366f1', '#84cc16', '#f97316'];
+const stColor = name => ST_COLORS[[...new Set(Stmts.items.map(stLabel))].sort().indexOf(name) % ST_COLORS.length];
 function stmCal(all) {
   const m = S.stCal || (S.stCal = curYM()), first = new Date(m + '-01T00:00'), pad0 = first.getDay(), days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-  const ev = {}; all.forEach(x => { if (x.date) (ev[x.date] = ev[x.date] || { e: 0, d: 0 }).e++; if (x.dueDate) (ev[x.dueDate] = ev[x.dueDate] || { e: 0, d: 0 }).d++; });
+  const ev = {}; all.forEach(x => { if (x.date) (ev[x.date] = ev[x.date] || []).push(x); });
   let cells = '<i></i>'.repeat(pad0);
   for (let d = 1; d <= days; d++) {
-    const ds = m + '-' + pad(d), e = ev[ds];
-    cells += `<button class="cal-d${ds === today() ? ' td' : ''}${S.stDay === ds ? ' sel' : ''}" data-action="stm-day" data-d="${ds}"><span>${d}</span><em>${e ? (e.e ? '<b class="dot em"></b>' : '') + (e.d ? '<b class="dot du"></b>' : '') : ''}</em></button>`;
+    const ds = m + '-' + pad(d), e = ev[ds], cs = e ? [...new Set(e.map(stLabel))].map(stColor) : [];
+    const bg = !cs.length ? '' : cs.length === 1 ? cs[0] : `linear-gradient(135deg,${cs.map((c, i) => `${c} ${i * 100 / cs.length}% ${(i + 1) * 100 / cs.length}%`).join(',')})`;
+    cells += `<button class="cal-d${ds === today() ? ' td' : ''}${S.stDay === ds ? ' sel' : ''}${cs.length ? ' has' : ''}" data-action="stm-day" data-d="${ds}"${bg ? ` style="background:${bg}"` : ''}><span>${d}</span></button>`;
   }
-  const inM = all.filter(x => (x.date || '').startsWith(m) || (x.dueDate || '').startsWith(m));
-  const shown = S.stDay ? all.filter(x => x.date === S.stDay || x.dueDate === S.stDay) : inM;
-  return `<div class="card stm-cal"><div class="cal-h"><button class="btn xs ghost" data-action="stm-cal" data-n="-1">‹</button><b>${esc(mLong(m))}</b><button class="btn xs ghost" data-action="stm-cal" data-n="1">›</button></div>
+  const inM = all.filter(x => (x.date || '').startsWith(m)), shown = S.stDay ? all.filter(x => x.date === S.stDay) : inM;
+  const names = [...new Set(all.map(stLabel))].sort();
+  return `<div class="card stm-cal"><div class="cal-h"><button class="btn xs ghost" data-action="stm-cal" data-n="-1">‹</button><b>${esc(mLong(m))} ${m.slice(0, 4)}</b><button class="btn xs ghost" data-action="stm-cal" data-n="1">›</button></div>
     <div class="cal-w">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<span>${x}</span>`).join('')}</div><div class="cal-g">${cells}</div>
-    <div class="cal-k"><span><b class="dot em"></b> Statement email</span><span><b class="dot du"></b> Payment due</span></div></div>
+    <div class="cal-k">${names.map(n => `<span><b class="dot" style="background:${stColor(n)}"></b> ${esc(n)}</span>`).join('')}</div></div>
     <div class="stm-m">${S.stDay ? esc(shortD(S.stDay, true)) : esc(mLong(m))} · ${shown.length} statement${shown.length === 1 ? '' : 's'}</div>` +
-    (shown.length ? shown.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(stmCard).join('') : '<p class="muted sm" style="text-align:center;padding:10px">Nothing on this ' + (S.stDay ? 'day' : 'month') + '.</p>');
+    (shown.length ? shown.map(stmCard).join('') : '<p class="muted sm" style="text-align:center;padding:10px">No statements ' + (S.stDay ? 'on this day' : 'this month') + '.</p>');
 }
 function stmtHtml() {
   const all = Stmts.items;
@@ -2556,7 +2638,8 @@ ACTIONS['settings'] = () => {
     <div class="sec-title">Security</div>
     <div class="set-group"><button class="set-item" data-action="bio-toggle"><span class="ic">👆</span><span class="t">Fingerprint unlock<small>${Bio.enabled() ? 'On — tap to turn off' : 'Use fingerprint / face instead of typing the password'}</small></span>›</button>
       ${Push.configured() ? `<button class="set-item" data-action="push-toggle"><span class="ic">🔔</span><span class="t">Notifications<small>${Push.enabled() ? 'On for ' + esc(Push.name()) + ' — tap to turn off' : 'Get alerted when someone else adds a transaction'}</small></span>›</button>` : ''}
-      <button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now<small>Auto-locks after ${CONFIG.AUTO_LOCK_MIN} min idle</small></span>›</button></div>
+      <button class="set-item" data-action="lock-pref"><span class="ic">⏱️</span><span class="t">Auto sign-out<small>${(CONFIG.LOCK_OPTIONS.find(o => o[0] === CONFIG.AUTO_LOCK_MIN) || [0, CONFIG.AUTO_LOCK_MIN + ' min'])[1]}</small></span>›</button>
+      <button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now</span>›</button></div>
     <p class="xs faint" style="text-align:center;margin-top:18px">Paisa v1 · ${CONFIG.MODE === 'local' ? 'Local demo mode (this browser only)' : 'Synced with Google Sheets'} · ${D.txns.length} transactions</p>`,
   body => {
     $$('#stTheme button', body).forEach(b => b.onclick = () => { $$('#stTheme button', body).forEach(x => x.classList.toggle('on', x === b)); setTheme(b.dataset.v); });
