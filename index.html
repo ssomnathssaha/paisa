@@ -1085,7 +1085,40 @@ function setTheme(t) { localStorage.setItem(THEME_KEY, t); applyTheme(t); if (D)
 
 /* ---------- toast ---------- */
 let toastTimer;
+/* synthesized UI sounds (no audio files); toggle in Settings */
+const Snd = {
+  ctx: null,
+  get on() { return localStorage.getItem('paisa_snd') !== '0'; },
+  set on(v) { localStorage.setItem('paisa_snd', v ? '1' : '0'); },
+  tone(f, t0, d, type, vol) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime + t0;
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + d + 0.02);
+  },
+  play(k) {
+    if (!this.on) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      if (!this.ctx) this.ctx = new AC(); if (this.ctx.state === 'suspended') this.ctx.resume();
+      const P = {
+        tap: () => this.tone(520, 0, 0.05, 'sine', 0.06),
+        tab: () => this.tone(660, 0, 0.06, 'triangle', 0.07),
+        open: () => { this.tone(440, 0, 0.07, 'sine', 0.07); this.tone(587, 0.05, 0.08, 'sine', 0.07); },
+        success: () => { this.tone(660, 0, 0.12, 'sine', 0.12); this.tone(880, 0.09, 0.16, 'sine', 0.12); this.tone(1320, 0.18, 0.22, 'sine', 0.08); },
+        income: () => { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, i * 0.07, 0.16, 'sine', 0.11)); },
+        delete: () => { this.tone(380, 0, 0.1, 'triangle', 0.1); this.tone(240, 0.08, 0.16, 'triangle', 0.1); },
+        error: () => { this.tone(200, 0, 0.14, 'square', 0.06); this.tone(170, 0.14, 0.2, 'square', 0.06); },
+        unlock: () => { this.tone(523, 0, 0.1, 'sine', 0.1); this.tone(784, 0.09, 0.2, 'sine', 0.1); },
+        lock: () => { this.tone(784, 0, 0.1, 'sine', 0.09); this.tone(523, 0.09, 0.2, 'sine', 0.09); },
+      };
+      (P[k] || P.tap)();
+    } catch (e) { /* audio unavailable */ }
+  },
+};
 function toast(msg, action, onAction) {
+  { const m = String(msg).toLowerCase();
+    Snd.play(/⚠|could not|can't|cannot|fail|invalid|incorrect|error|wrong|needs/.test(m) ? 'error' : /delet|remov|cleared|discard/.test(m) ? 'delete' : /saved|added|updated|✓|paid|enabled|merged|done|restored/.test(m) ? 'success' : 'tap'); }
   const el = $('#toast'), btn = $('#toastBtn');
   $('#toastMsg').textContent = msg;
   btn.hidden = !action; btn.textContent = action || '';
@@ -1307,9 +1340,9 @@ ACTIONS['prev-month'] = () => { S.month = addMonths(S.month, -1); render(); };
 ACTIONS['next-month'] = () => { if (S.month < MAX_MONTH()) { S.month = addMonths(S.month, 1); render(); } };
 
 document.addEventListener('click', e => {
-  const tab = e.target.closest('[data-tab]'); if (tab) { setTab(tab.dataset.tab); return; }
+  const tab = e.target.closest('[data-tab]'); if (tab) { Snd.play('tab'); setTab(tab.dataset.tab); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
-  const fn = ACTIONS[el.dataset.action]; if (fn) { e.preventDefault(); fn(el, e); }
+  const fn = ACTIONS[el.dataset.action]; if (fn) { if (!['lock', 'snd-toggle'].includes(el.dataset.action)) Snd.play(['add', 'review'].includes(el.dataset.action) ? 'open' : 'tap'); e.preventDefault(); fn(el, e); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); $('#dialog').classList.remove('open'); } });
 
@@ -1483,7 +1516,7 @@ $('#lockForm').addEventListener('submit', async e => {
   err.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Unlocking…';
   try {
     await Store.unlock(pw);
-    lastPw = pw; setDemoUI(Demo.on);
+    lastPw = pw; setDemoUI(Demo.on); Snd.play('unlock');
     if (!Demo.on) Sess.save(pw);
     $('#pwInput').value = ''; $('#pwInput').blur();
     S.month = curYM(); $('#app').hidden = false; $('#lock').classList.add('out');
@@ -1499,7 +1532,7 @@ $('#lockForm').addEventListener('submit', async e => {
 });
 function lockApp(msg) {
   const pending = CONFIG.MODE === 'sheets' ? Sync.n : 0;
-  closeSheet(); Store.lock(); lastPw = ''; Demo.on = false; setDemoUI(false); Sess.clear(); refreshBio();
+  Snd.play('lock'); closeSheet(); Store.lock(); lastPw = ''; Demo.on = false; setDemoUI(false); Sess.clear(); refreshBio();
   $$('main .view').forEach(v => v.innerHTML = '');
   $('#app').hidden = true; $('#lock').classList.remove('out');
   $('#lockErr').textContent = (msg || '') + (pending ? `${msg ? ' · ' : ''}${pending} unsynced change${pending === 1 ? ' is' : 's are'} kept on this device.` : '');
@@ -1519,6 +1552,7 @@ setInterval(() => {
   if (CONFIG.AUTO_LOCK_MIN && Date.now() - lastActive > CONFIG.AUTO_LOCK_MIN * 60e3) lockApp('Locked after inactivity 🔒');
   else if (!Demo.on && Date.now() - lastActive < 30e3) Sess.touch();
 }, 30e3);
+ACTIONS['snd-toggle'] = el => { Snd.on = !Snd.on; Snd.play('success'); const sm = el.querySelector('small'); if (sm) sm.textContent = Snd.on ? 'On — tap to turn off' : 'Off — tap to turn on'; };
 ACTIONS['lock-pref'] = () => openSheet('Auto sign-out', `<div class="set-group">${CONFIG.LOCK_OPTIONS.map(([m, l]) => `<button class="set-item" data-action="lock-set" data-m="${m}"><span class="t">${l}${m === CONFIG.AUTO_LOCK_MIN ? ' ✓' : ''}<small>${m ? 'Sign out after ' + l + ' of inactivity' : 'Ask for password whenever you leave or reload the app'}</small></span></button>`).join('')}</div>`);
 ACTIONS['lock-set'] = el => {
   const m = parseInt(el.dataset.m, 10); localStorage.setItem('paisa_lock', m);
@@ -2098,12 +2132,15 @@ function recGuess(it) {
   const n = learnKey(it.merchant), hit = D.recurring.filter(r => r.active !== false && r.type === it.type && Math.abs(r.amount - it.amount) < 1);
   return (hit.find(r => n && (learnKey(r.name).includes(n) || n.includes(learnKey(r.name)))) || hit[0] || {}).id || '';
 }
+const nearTx = it => D.txns.filter(t => !(t.tags || []).includes('bank-email') && t.type === it.type && Math.abs(parseD(t.date) - parseD(it.date)) <= 864e5)
+  .sort((a, b) => Math.abs(a.amount - it.amount) - Math.abs(b.amount - it.amount));
 function linkOptions(it) {
   const m = it.date.slice(0, 7), recs = D.recurring.filter(r => r.active !== false && r.type === it.type), cs = cards();
   const guess = isCardPay(it) && cs.length ? 'c:' + (cs.find(c => learnKey(it.merchant + ' ' + it.snippet).includes(learnKey(c.name).split(' ')[0])) || cs[0]).id : (recGuess(it) ? 'r:' + recGuess(it) : '');
   const o = v => `value="${esc(v)}"${v === guess ? ' selected' : ''}`;
   return `<select class="inp rv-link" data-link="${esc(it.id)}"><option value="">No link — add as a new ${it.type}</option>
     ${recs.length ? `<optgroup label="🔁 Recurring bill">${recs.map(r => `<option ${o('r:' + r.id)}>${esc(r.name)} · ${fmtC(r.amount)}${recTx(r, m) ? ' (already recorded)' : ''}</option>`).join('')}</optgroup>` : ''}
+    ${(() => { const ns = nearTx(it); return ns.length ? `<optgroup label="🧾 Existing entry (±1 day)">${ns.map(t => `<option value="t:${esc(t.id)}">${esc(txLabel(t))}${t.recurId ? ' 🔁' : ''}</option>`).join('')}</optgroup>` : ''; })()}
     ${cs.length ? `<optgroup label="💳 Credit card bill payment (not an expense)">${cs.map(c => `<option ${o('c:' + c.id)}>Pay ${esc(c.name)} bill</option>`).join('')}</optgroup>` : ''}</select>`;
 }
 function mergeInto(it, t) {
@@ -2125,7 +2162,7 @@ function reviewBanner() {
 function reviewList(body) {
   const items = Inbox.items;
   if (!items.length) { body.innerHTML = emptyState('✅', 'All caught up', 'New bank alerts from your email show up here automatically.'); return; }
-  body.innerHTML = `<p class="xs muted" style="margin:0 0 10px">Found in your bank alert emails. <b>Add</b> records it (use <i>Link to</i> to tie it to a recurring bill or a card bill payment); <b>Skip</b> ignores it.</p>
+  body.innerHTML = `<p class="xs muted" style="margin:0 0 10px">Found in your bank alert emails. <b>Add</b> records it (use <i>Link to</i> to tie it to a recurring bill, an existing entry from ±1 day, or a card bill payment); <b>Skip</b> ignores it.</p>
     ${items.map(it => { const inc = it.type === 'income', sim = similarTx(it); return `<div class="rv-item">
       <div class="rv-top"><span class="rv-ic ${inc ? 'pos' : 'neg'}">${inc ? '↓' : '↑'}</span>
         <span class="rv-mid"><b>${esc(it.merchant || (inc ? 'Money received' : 'Payment'))}</b><small>${esc(it.bank || 'Bank')}${it.acct ? ' ••' + esc(it.acct) : ''} · ${methodIcon(it.method)} ${esc(it.method || '')} · ${shortDate(it.date)}</small></span>
@@ -2158,6 +2195,10 @@ async function reviewAdd(it, link) {
     const from = it.type === 'expense' ? (froms.find(a => bk && a.name.toLowerCase().includes(bk)) || froms.find(a => a.id === D.settings.payFrom) || froms[0] || {}).id : '';
     payCardForm(id, null, { amount: it.amount, date: it.date, fromId: from, note: it.merchant, tags: ['card-bill', 'bank-email'], onSave: rec => { Inbox.mark(it.id, 'added', rec.id); reviewNext(); } });
     return;
+  }
+  if (kind === 't') {
+    const t = D.txns.find(x => x.id === id);
+    if (t) { if (await confirmDlg('Link to existing entry?', `${txLabel(t)} will be linked to this bank alert and get its details (merchant, payment method). No new entry is created.`, 'Link')) mergeInto(it, t); return; }
   }
   if (kind === 'r') {
     const r = D.recurring.find(x => x.id === id), ex = r && recTx(r, it.date.slice(0, 7));
@@ -2638,6 +2679,7 @@ ACTIONS['settings'] = () => {
     <div class="sec-title">Security</div>
     <div class="set-group"><button class="set-item" data-action="bio-toggle"><span class="ic">👆</span><span class="t">Fingerprint unlock<small>${Bio.enabled() ? 'On — tap to turn off' : 'Use fingerprint / face instead of typing the password'}</small></span>›</button>
       ${Push.configured() ? `<button class="set-item" data-action="push-toggle"><span class="ic">🔔</span><span class="t">Notifications<small>${Push.enabled() ? 'On for ' + esc(Push.name()) + ' — tap to turn off' : 'Get alerted when someone else adds a transaction'}</small></span>›</button>` : ''}
+      <button class="set-item" data-action="snd-toggle"><span class="ic">🔊</span><span class="t">Sounds<small>${Snd.on ? 'On — tap to turn off' : 'Off — tap to turn on'}</small></span></button>
       <button class="set-item" data-action="lock-pref"><span class="ic">⏱️</span><span class="t">Auto sign-out<small>${(CONFIG.LOCK_OPTIONS.find(o => o[0] === CONFIG.AUTO_LOCK_MIN) || [0, CONFIG.AUTO_LOCK_MIN + ' min'])[1]}</small></span>›</button>
       <button class="set-item" data-action="lock"><span class="ic">🔒</span><span class="t">Lock now</span>›</button></div>
     <p class="xs faint" style="text-align:center;margin-top:18px">Paisa v1 · ${CONFIG.MODE === 'local' ? 'Local demo mode (this browser only)' : 'Synced with Google Sheets'} · ${D.txns.length} transactions</p>`,
