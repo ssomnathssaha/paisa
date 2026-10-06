@@ -666,7 +666,7 @@ const groupInfo = (kind, g) => { const f = (GROUPS[kind] || []).find(x => x[0] =
    - If the Sheet changed elsewhere (CONFLICT), local edits are merged item-by-item into the newer Sheet data — never dropped.
    - Local changes are discarded only through an explicit, confirmed "Discard my changes" action. */
 let D = null;
-const PENDING_KEY = 'paisa_pending_v1', SALT_KEY = 'paisa_salt';
+const CACHE_KEY = 'paisa_cache_v1', PENDING_KEY = 'paisa_pending_v1', SALT_KEY = 'paisa_salt';
 const Sync = { timer: null, ptimer: null, retryAt: 0, inflight: false, dirty: false, n: 0, since: 0, state: 'saved', err: '', lastOk: 0, session: 0, pendingAtLock: -1 };
 const clone = o => JSON.parse(JSON.stringify(o));
 const SERVER_VER_NEEDED = 2;
@@ -697,6 +697,20 @@ const Vault = {
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(p.iv) }, this.key, unb64(p.ct));
     return JSON.parse(new TextDecoder().decode(pt));
   },
+  async writeCache(obj) { // encrypted copy of the last synced data: readable only with the password-derived key
+    const key = this.key; if (!key) return;
+    try {
+      const iv = crypto.getRandomValues(new Uint8Array(12)), ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ v: 1, iv: b64(iv), ct: b64(ct) }));
+    } catch (e) { /* storage full or unavailable: offline copy just won't be refreshed */ }
+  },
+  async readCache() {
+    if (!this.key) return null;
+    try {
+      const p = JSON.parse(localStorage.getItem(CACHE_KEY)); if (!p) return null;
+      return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(p.iv) }, this.key, unb64(p.ct))));
+    } catch (e) { return null; }
+  },
   meta() { try { return JSON.parse(localStorage.getItem(PENDING_KEY)); } catch (e) { return null; } },
   clear() { this.seq++; localStorage.removeItem(PENDING_KEY); },
   lock() { this.key = null; },
@@ -723,6 +737,8 @@ function mergeData(base, local, server) {
   return { data: out, changes: n };
 }
 
+// A server copy with far fewer transactions than we last saw is almost certainly a partial read, never trust it
+const suspicious = (base, server) => { const b = ((base || {}).txns || []).length, n = ((server || {}).txns || []).length; return b >= 5 && n < b * 0.5; };
 const Store = {
   pw: null, rev: null, base: null, sheetUrl: '', notice: '', serverVer: 2,
   async unlock(pw) {
@@ -737,11 +753,17 @@ const Store = {
     try { res = await api('load', {}, pw); } catch (e) { if (e.code) throw e; netErr = e; }
     await Vault.init(pw);
     if (Vault.meta()) { try { pend = await Vault.read(); } catch (e) { pend = 'unreadable'; } }
-    if (!res && (!pend || pend === 'unreadable')) { Vault.lock(); throw netErr; }
+    let cache = null;
+    if (!res && (!pend || pend === 'unreadable')) { cache = await Vault.readCache(); if (!cache) { Vault.lock(); throw netErr; } }
     Sync.session++; Sync.inflight = false; Sync.n = 0; Sync.dirty = false; Sync.err = ''; Sync.since = 0; Sync.pendingAtLock = -1; this.pw = pw;
     if (pend === 'unreadable') { // written with an older password — keep it aside, never overwrite silently
       localStorage.setItem(PENDING_KEY + '_unreadable', localStorage.getItem(PENDING_KEY)); Vault.clear(); pend = null;
       this.notice = '⚠️ Found unsynced changes saved with a different password. They were kept aside, untouched.';
+    }
+    if (!res && cache) { // offline, nothing unsynced: show the last synced copy (decrypting it proves the password)
+      D = migrate(cache.data); this.base = clone(D); this.rev = cache.rev; Sync.n = 0; Sync.dirty = false; this.stale = true;
+      this.notice = `📴 Offline — showing your data saved on this device (last synced ${new Date(cache.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}).`;
+      this.retryLater('offline'); return;
     }
     if (!res) { // offline: open the encrypted on-device copy (decryption proves the password)
       D = migrate(pend.data); this.base = pend.base; this.rev = pend.baseRev;
@@ -753,11 +775,12 @@ const Store = {
     if (serverOutdated()) this.notice = (this.notice ? this.notice + ' ' : '') + '⚠️ Your Apps Script is outdated — update Code.gs (see SETUP.md) to enable credit-card tracking.';
     const server = migrate(res.data || {});
     if (pend) {
+      if (suspicious(pend.base, server)) { Vault.lock(); throw new Error('Sheet data looks incomplete. Try again in a moment — your unsynced changes are safe on this device.'); }
       D = migrate(mergeData(migrate(pend.base || {}), migrate(pend.data), server).data);
       this.base = server; this.rev = res.rev; Sync.n = pend.n || 1; Sync.dirty = true; Sync.since = pend.at || Date.now();
       this.notice = `☁️ Restored ${Sync.n} unsynced change${Sync.n === 1 ? '' : 's'} from ${new Date(pend.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} — syncing now…`;
       setSync('saving'); Sync.timer = setTimeout(() => this.flush(), 50);
-    } else { D = server; this.base = clone(server); this.rev = res.rev; Sync.lastOk = Date.now(); setSync('saved'); }
+    } else { D = server; this.base = clone(server); this.rev = res.rev; Sync.lastOk = Date.now(); this.cacheNow(server); setSync('saved'); }
   },
   save() {
     if (!D) return;
@@ -768,6 +791,7 @@ const Store = {
     if (['offline', 'error', 'locked', 'auth'].includes(Sync.state)) { setSync(); return; } // the retry timer will pick it up
     setSync('saving'); clearTimeout(Sync.timer); Sync.timer = setTimeout(() => this.flush(), 800);
   },
+  cacheNow(data) { if (CONFIG.MODE === 'sheets' && data) Vault.writeCache({ data, rev: this.rev, at: Date.now() }); },
   persist() { clearTimeout(Sync.ptimer); Sync.ptimer = setTimeout(() => this.persistNow(), 250); },
   persistNow() {
     clearTimeout(Sync.ptimer);
@@ -777,13 +801,14 @@ const Store = {
   },
   async flush() {
     clearTimeout(Sync.timer);
+    if (this.stale && !Sync.dirty && this.pw && !Sync.inflight) return this.refreshStale();
     if (CONFIG.MODE !== 'sheets' || !D || !Sync.dirty || Sync.inflight || !this.pw) return;
     const session = Sync.session, sentN = Sync.n, snap = JSON.stringify(D);
     Sync.inflight = true; Sync.dirty = false; setSync('saving');
     try {
       const r = await api('save', { data: D, baseRev: this.rev, deviceId: Push.id(), deviceName: Push.name() }); // request body is serialised synchronously
       if (session !== Sync.session) { if (!D && Sync.pendingAtLock === sentN) Vault.clear(); return; } // finished after locking
-      this.rev = r.rev; this.base = JSON.parse(snap); Sync.n = Math.max(0, Sync.n - sentN); Sync.lastOk = Date.now(); Sync.err = '';
+      this.rev = r.rev; this.base = JSON.parse(snap); this.stale = false; this.cacheNow(this.base); Sync.n = Math.max(0, Sync.n - sentN); Sync.lastOk = Date.now(); Sync.err = '';
       if (Sync.dirty || Sync.n) { Sync.dirty = true; this.persistNow(); setSync('saving'); Sync.timer = setTimeout(() => this.flush(), 300); }
       else { Sync.since = 0; Vault.clear(); setSync('saved'); }
     } catch (e) {
@@ -795,6 +820,19 @@ const Store = {
       else this.retryLater(e.code ? 'error' : 'offline');
     } finally { if (session === Sync.session) Sync.inflight = false; }
   },
+  // Opened from the offline copy: once the Sheet is reachable, swap in the fresh data
+  async refreshStale() {
+    const session = Sync.session; Sync.inflight = true;
+    try {
+      const res = await api('load'); if (session !== Sync.session || !D) return;
+      const server = migrate(res.data || {});
+      if (suspicious(this.base, server)) throw new Error('Sheet data looks incomplete');
+      if (Sync.dirty || Sync.n) { Sync.inflight = false; this.stale = false; return this.mergeFromServer(); }
+      D = server; this.base = clone(server); this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1; this.stale = false;
+      this.cacheNow(server); Sync.lastOk = Date.now(); setSync('saved'); render(); toast('Back online — data refreshed ☁️');
+    } catch (e) { if (session !== Sync.session) return; Sync.err = e.message; if (e.code === 'AUTH') { setSync('auth'); } else this.retryLater(e.code ? 'error' : 'offline'); }
+    finally { if (session === Sync.session) Sync.inflight = false; }
+  },
   retryLater(state, sec = CONFIG.SYNC_RETRY_SEC) {
     clearTimeout(Sync.timer); Sync.retryAt = Date.now() + sec * 1000; setSync(state);
     Sync.timer = setTimeout(() => this.flush(), sec * 1000);
@@ -805,7 +843,9 @@ const Store = {
     try {
       const res = await api('load');
       if (session !== Sync.session || !D) return;
-      const server = migrate(res.data || {}), m = mergeData(migrate(clone(this.base || {})), D, server);
+      const server = migrate(res.data || {});
+      if (suspicious(this.base, server)) { Sync.err = 'Sheet data looks incomplete — will retry'; Sync.dirty = true; this.retryLater('error', 20); return; }
+      const m = mergeData(migrate(clone(this.base || {})), D, server);
       D = migrate(m.data); this.base = server; this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1;
       Sync.dirty = true; if (!Sync.n) Sync.n = 1; this.persistNow(); render();
       toast('🔀 Merged your changes with newer data from the Sheet');
@@ -822,7 +862,8 @@ const Store = {
     const session = Sync.session; setSync('saving');
     try {
       const res = await api('load'); if (session !== Sync.session) return;
-      D = migrate(res.data || {}); this.base = clone(D); this.rev = res.rev; this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1;
+      if (suspicious(this.base, migrate(res.data || {}))) throw new Error('Sheet data looks incomplete. Try again in a moment.');
+      this.stale = false; D = migrate(res.data || {}); this.base = clone(D); this.rev = res.rev; this.cacheNow(D); this.sheetUrl = res.sheetUrl || this.sheetUrl; this.serverVer = res.ver || 1;
       clearTimeout(Sync.timer); Sync.n = 0; Sync.dirty = false; Sync.since = 0; Sync.lastOk = Date.now(); Vault.clear();
       setSync('saved'); closeSheet(); render(); toast('Reloaded from Google Sheet ✓');
     } catch (e) { setSync(Sync.n ? 'error' : 'saved'); toast('⚠️ ' + e.message); }
@@ -830,7 +871,7 @@ const Store = {
   lock() {
     if (CONFIG.MODE === 'sheets' && D && Sync.n) { this.persistNow(); Sync.pendingAtLock = Sync.n; this.flush(); }
     Sync.session++; Sync.inflight = false; clearTimeout(Sync.timer); clearTimeout(Sync.ptimer);
-    D = null; this.pw = null; this.rev = null; this.base = null; Vault.lock(); setSync(); Inbox.items = [];
+    D = null; this.stale = false; this.pw = null; this.rev = null; this.base = null; Vault.lock(); setSync(); Inbox.items = [];
   },
 };
 
@@ -857,7 +898,7 @@ function setSync(state) {
   const on = CONFIG.MODE === 'sheets' && !!D, st = Sync.state, n = Sync.n;
   el.hidden = !on;
   el.className = 'sync ' + (st === 'saved' ? 'saved' : st === 'saving' ? 'saving' : 'error');
-  el.textContent = st === 'saved' ? '☁️ Synced' : st === 'saving' ? '⏳ Syncing…' : `⚠️ ${n} unsynced`;
+  el.textContent = Store.stale && !n ? '📴 Offline copy' : st === 'saved' ? '☁️ Synced' : st === 'saving' ? '⏳ Syncing…' : `⚠️ ${n} unsynced`;
   const show = on && n > 0 && (st !== 'saving' || Date.now() - Sync.since > 8000);
   bar.hidden = !show; document.body.classList.toggle('has-syncbar', show);
   if (!show) return;
@@ -873,7 +914,7 @@ function setSync(state) {
   btn.textContent = st === 'auth' ? 'Lock' : 'Retry now'; btn.dataset.action = st === 'auth' ? 'lock' : 'sync-retry';
 }
 setInterval(() => { if (D && Sync.state !== 'saved') setSync(); }, 1000);
-addEventListener('online', () => { if (D && Sync.n && Sync.state !== 'auth') { Sync.dirty = true; Store.flush(); } });
+addEventListener('online', () => { if (D && Store.stale && !Sync.n) Store.flush(); else if (D && Sync.n && Sync.state !== 'auth') { Sync.dirty = true; Store.flush(); } });
 addEventListener('beforeunload', e => { if (D && Sync.n) { Store.persistNow(); Store.flush(); e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden && D && Sync.n) { Store.persistNow(); Store.flush(); } });
 function migrate(d) {
